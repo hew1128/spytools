@@ -3,4 +3,4 @@ requests
 beautifulsoup4
 gunicorn
 apscheduler
-playwright
+playwright==1.44.0
