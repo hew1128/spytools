@@ -45,42 +45,40 @@ init_db()
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'ko-KR,ko;q=0.9',
     'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Cache-Control': 'max-age=0',
 }
 
 def scrape_naver(url):
     try:
-        session = requests.Session()
-        # 네이버 메인 먼저 방문해서 쿠키 획득
-        session.get('https://www.naver.com', headers=HEADERS, timeout=10)
-        time.sleep(random.uniform(1.5, 3.0))
-        headers = dict(HEADERS)
-        headers['Referer'] = 'https://www.naver.com/'
-        resp = session.get(url, headers=headers, timeout=20)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+                      '--disable-setuid-sandbox', '--single-process']
+            )
+            page = browser.new_page(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+                locale='ko-KR',
+            )
+            page.set_extra_http_headers({'Accept-Language': 'ko-KR,ko;q=0.9'})
+            page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            page.wait_for_timeout(2000)
+            content = page.content()
+            browser.close()
+
+        soup = BeautifulSoup(content, 'html.parser')
         result = {'review_count': None, 'rating': None, 'price': None, 'error': None}
 
-        # __NEXT_DATA__ JSON에서 추출
         next_script = soup.find('script', {'id': '__NEXT_DATA__'})
         if next_script and next_script.string:
             s = next_script.string
-
             m = re.search(r'"reviewCount"\s*:\s*(\d+)', s)
             if m: result['review_count'] = int(m.group(1))
-
             m = re.search(r'"averageRating"\s*:\s*([\d.]+)', s)
             if m: result['rating'] = float(m.group(1))
-
             for pat in [r'"salePrice"\s*:\s*(\d{3,7})', r'"discountedSalePrice"\s*:\s*(\d{3,7})',
                         r'"price"\s*:\s*(\d{3,7})']:
                 m = re.search(pat, s)
@@ -88,25 +86,13 @@ def scrape_naver(url):
                     result['price'] = int(m.group(1))
                     break
 
-        # fallback: HTML 파싱
         if result['review_count'] is None:
-            for sel in ['[class*="reviewCount"] em', '[class*="review_count"]',
-                        '._2pgHN-ntx6', 'em._15NU42F3kT']:
+            for sel in ['[class*="reviewCount"] em', '[class*="review_count"]']:
                 el = soup.select_one(sel)
                 if el:
                     m = re.search(r'[\d,]+', el.get_text())
                     if m:
                         result['review_count'] = int(m.group().replace(',', ''))
-                        break
-
-        if result['price'] is None:
-            for sel in ['[class*="salePrice"]', '[class*="price"] strong',
-                        '._1LY7DqCnwR strong']:
-                el = soup.select_one(sel)
-                if el:
-                    m = re.search(r'[\d,]+', el.get_text())
-                    if m:
-                        result['price'] = int(m.group().replace(',', ''))
                         break
 
         return result
