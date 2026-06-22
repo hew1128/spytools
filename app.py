@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-import sqlite3, json, re, os
+import sqlite3, json, re, os, time, random
 from datetime import datetime, date
 import requests
 from bs4 import BeautifulSoup
@@ -44,15 +44,28 @@ init_db()
 # ── 스크래퍼 ────────────────────────────────────────────────────
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'ko-KR,ko;q=0.9',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0',
 }
 
 def scrape_naver(url):
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
+        session = requests.Session()
+        # 네이버 메인 먼저 방문해서 쿠키 획득
+        session.get('https://www.naver.com', headers=HEADERS, timeout=10)
+        time.sleep(random.uniform(1.5, 3.0))
+        headers = dict(HEADERS)
+        headers['Referer'] = 'https://www.naver.com/'
+        resp = session.get(url, headers=headers, timeout=20)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
         result = {'review_count': None, 'rating': None, 'price': None, 'error': None}
