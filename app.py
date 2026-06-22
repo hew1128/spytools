@@ -64,8 +64,8 @@ def scrape_naver(url):
                 locale='ko-KR',
             )
             page.set_extra_http_headers({'Accept-Language': 'ko-KR,ko;q=0.9'})
-            page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            page.wait_for_timeout(2000)
+            page.goto(url, wait_until='networkidle', timeout=45000)
+            page.wait_for_timeout(3000)
             content = page.content()
             browser.close()
 
@@ -73,27 +73,31 @@ def scrape_naver(url):
         result = {'review_count': None, 'rating': None, 'price': None, 'error': None}
 
         next_script = soup.find('script', {'id': '__NEXT_DATA__'})
-        if next_script and next_script.string:
-            s = next_script.string
-            m = re.search(r'"reviewCount"\s*:\s*(\d+)', s)
-            if m: result['review_count'] = int(m.group(1))
-            m = re.search(r'"averageRating"\s*:\s*([\d.]+)', s)
-            if m: result['rating'] = float(m.group(1))
-            for pat in [r'"salePrice"\s*:\s*(\d{3,7})', r'"discountedSalePrice"\s*:\s*(\d{3,7})',
-                        r'"price"\s*:\s*(\d{3,7})']:
-                m = re.search(pat, s)
-                if m:
-                    result['price'] = int(m.group(1))
-                    break
+        if not next_script or not next_script.string:
+            # __NEXT_DATA__ 없음 → 로그인 요구 또는 봇 차단 페이지
+            title = soup.find('title')
+            result['error'] = f'NO_NEXT_DATA (title={title.text[:60] if title else "?"})'
+            return result
+
+        s = next_script.string
+        m = re.search(r'"reviewCount"\s*:\s*(\d+)', s)
+        if m: result['review_count'] = int(m.group(1))
+        m = re.search(r'"averageRating"\s*:\s*([\d.]+)', s)
+        if m: result['rating'] = float(m.group(1))
+        for pat in [r'"salePrice"\s*:\s*(\d{3,7})', r'"discountedSalePrice"\s*:\s*(\d{3,7})',
+                    r'"price"\s*:\s*(\d{3,7})']:
+            m = re.search(pat, s)
+            if m:
+                result['price'] = int(m.group(1))
+                break
 
         if result['review_count'] is None:
-            for sel in ['[class*="reviewCount"] em', '[class*="review_count"]']:
-                el = soup.select_one(sel)
-                if el:
-                    m = re.search(r'[\d,]+', el.get_text())
-                    if m:
-                        result['review_count'] = int(m.group().replace(',', ''))
-                        break
+            # reviewCount 키가 없으면 다른 키 시도
+            for pat in [r'"totalReviewCount"\s*:\s*(\d+)', r'"reviewTotalCount"\s*:\s*(\d+)']:
+                m = re.search(pat, s)
+                if m:
+                    result['review_count'] = int(m.group(1))
+                    break
 
         return result
     except Exception as e:
