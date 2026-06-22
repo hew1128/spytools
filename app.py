@@ -331,5 +331,50 @@ def delete_product(pid):
     return redirect(url_for('dashboard'))
 
 
+# ── 로컬 수집기용 API ─────────────────────────────────────────────
+
+@app.route('/api/products', methods=['GET'])
+def api_products():
+    conn = get_db()
+    rows = conn.execute("SELECT id, name, url, platform FROM products WHERE is_active=1").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route('/api/push', methods=['POST'])
+def api_push():
+    data = request.get_json()
+    if not data or not isinstance(data, list):
+        return jsonify({'ok': False, 'error': 'invalid data'}), 400
+    conn = get_db()
+    today = date.today().isoformat()
+    count = 0
+    for item in data:
+        pid          = item.get('product_id')
+        review_count = item.get('review_count')
+        rating       = item.get('rating')
+        price        = item.get('price')
+        error        = item.get('error')
+        if not pid:
+            continue
+        existing = conn.execute(
+            "SELECT id FROM snapshots WHERE product_id=? AND collected_at=?", (pid, today)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE snapshots SET review_count=?,rating=?,price=?,error=? WHERE product_id=? AND collected_at=?",
+                (review_count, rating, price, error, pid, today)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO snapshots (product_id,review_count,rating,price,error,collected_at) VALUES (?,?,?,?,?,?)",
+                (pid, review_count, rating, price, error, today)
+            )
+        count += 1
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'saved': count})
+
+
 if __name__ == '__main__':
     app.run(debug=True)
