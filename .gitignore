@@ -2,3 +2,4 @@ spy.db
 __pycache__/
 *.pyc
 .env
+setting.json

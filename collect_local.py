@@ -1,25 +1,45 @@
 """
 염탐기 로컬 수집 스크립트
-- 이 PC의 Chrome 브라우저로 네이버/쿠팡에 직접 접속해서 데이터 수집
+- setting.json 에서 네이버 ID/PW 읽어서 자동 로그인
 - 수집 결과를 Railway 서버에 전송
 - 실행: python collect_local.py
-- 자동 실행: 윈도우 작업 스케줄러로 매일 아침 등록 가능
 """
 
 import re
 import json
 import time
+import os
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 # ── 설정 ──────────────────────────────────────────────────────────
 SERVER_URL = 'https://web-production-54ce2d.up.railway.app'
+SETTING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setting.json')
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept-Language': 'ko-KR,ko;q=0.9',
-}
+
+def load_setting():
+    with open(SETTING_FILE, encoding='utf-8') as f:
+        return json.load(f)
+
+
+def naver_login(page, naver_id, naver_pw):
+    print('  네이버 로그인 중...')
+    page.goto('https://nid.naver.com/nidlogin.login', wait_until='domcontentloaded', timeout=20000)
+    page.wait_for_timeout(1000)
+    page.fill('#id', naver_id)
+    page.wait_for_timeout(500)
+    page.fill('#pw', naver_pw)
+    page.wait_for_timeout(500)
+    page.click('.btn_login')
+    page.wait_for_timeout(3000)
+    # 로그인 성공 확인
+    if 'naver.com' in page.url and 'nidlogin' not in page.url:
+        print('  로그인 성공!')
+        return True
+    print('  로그인 실패 또는 2차 인증 필요. 직접 로그인 후 Enter 누르세요...')
+    input()
+    return True
 
 
 def scrape_naver(url, page):
@@ -89,10 +109,19 @@ def scrape_coupang(url, page):
 
 
 def main():
-    print(f'[염탐기 로컬 수집기]')
-    print(f'서버: {SERVER_URL}')
+    print('[염탐기 로컬 수집기]')
+    print(f'서버: {SERVER_URL}\n')
 
-    # 1. 상품 목록 가져오기
+    # setting.json 읽기
+    try:
+        setting = load_setting()
+        naver_id = setting.get('네이버_id', '')
+        naver_pw = setting.get('네이버_pw', '')
+    except Exception as e:
+        print(f'setting.json 읽기 실패: {e}')
+        naver_id = naver_pw = ''
+
+    # 상품 목록 가져오기
     try:
         resp = requests.get(f'{SERVER_URL}/api/products', timeout=10)
         products = resp.json()
@@ -106,20 +135,23 @@ def main():
 
     print(f'상품 {len(products)}개 수집 시작...\n')
 
-    # 2. Playwright로 수집
     results = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)  # headless=False: 브라우저 창 보임
-        page = browser.new_page(
-            user_agent=HEADERS['User-Agent'],
-            locale='ko-KR',
-        )
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', locale='ko-KR')
+
+        # 네이버 상품이 있으면 로그인
+        has_naver = any(p['platform'] == 'naver' for p in products)
+        if has_naver and naver_id:
+            naver_login(page, naver_id, naver_pw)
+
         for prod in products:
             pid      = prod['id']
             name     = prod['name']
             url      = prod['url']
             platform = prod['platform']
-            print(f'  수집 중: {name[:30]}...')
+            print(f'  수집: {name[:35]}')
+
             if platform == 'naver':
                 r = scrape_naver(url, page)
             elif platform == 'coupang':
@@ -129,13 +161,13 @@ def main():
 
             r['product_id'] = pid
             results.append(r)
-            status = f"리뷰:{r['review_count']} 가격:{r['price']}" if r['review_count'] else f"오류:{r.get('error','?')}"
+            status = f"리뷰:{r['review_count']} 가격:{r['price']}" if r['review_count'] is not None else f"오류:{r.get('error','?')}"
             print(f'    → {status}')
             time.sleep(1)
 
         browser.close()
 
-    # 3. 서버로 전송
+    # 서버로 전송
     print(f'\n서버에 결과 전송 중...')
     try:
         resp = requests.post(
@@ -149,8 +181,7 @@ def main():
     except Exception as e:
         print(f'전송 실패: {e}')
 
-    print('\n수집 완료! 브라우저에서 확인하세요.')
-    print(SERVER_URL)
+    print(f'\n수집 완료! 브라우저에서 확인: {SERVER_URL}')
 
 
 if __name__ == '__main__':
