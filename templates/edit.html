@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="ph">
+  <div><a href="/product/{{ product.id }}" style="font-size:13px;color:#6b7280">← 상품 상세</a>
+  <h1 style="margin-top:4px">상품 수정</h1></div>
+</div>
+
+<div class="card" style="max-width:600px">
+  <form method="POST" action="/product/{{ product.id }}/edit">
+    <div class="form-group">
+      <label>상품명 *</label>
+      <input type="text" name="name" class="form-control" required value="{{ product.name }}">
+    </div>
+    <div class="form-group">
+      <label>플랫폼</label>
+      <select name="platform" class="form-control">
+        <option value="naver" {% if product.platform=='naver' %}selected{% endif %}>네이버 스마트스토어</option>
+        <option value="coupang" {% if product.platform=='coupang' %}selected{% endif %}>쿠팡</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>상품 URL *</label>
+      <input type="url" name="url" class="form-control" required value="{{ product.url }}">
+    </div>
+    <div class="form-group">
+      <label>메모</label>
+      <input type="text" name="memo" class="form-control" value="{{ product.memo or '' }}">
+    </div>
+    <div style="display:flex;gap:10px">
+      <button type="submit" class="btn btn-primary">저장</button>
+      <a href="/product/{{ product.id }}" class="btn btn-secondary">취소</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

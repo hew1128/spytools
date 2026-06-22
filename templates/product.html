@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="ph">
+  <div>
+    <a href="/" style="font-size:13px;color:#6b7280">← 대시보드</a>
+    <h1 style="margin-top:4px">{{ product.name }}</h1>
+    <p>
+      <a href="{{ product.url }}" target="_blank" style="color:#4f46e5;font-size:12px">
+        {{ product.url[:60] }}{% if product.url|length > 60 %}...{% endif %}
+      </a>
+    </p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button onclick="collectOne({{ product.id }}, this)" class="btn btn-success">지금 수집</button>
+    <a href="/product/{{ product.id }}/edit" class="btn btn-secondary">수정</a>
+    <form method="POST" action="/product/{{ product.id }}/delete"
+          onsubmit="return confirm('삭제하면 수집 이력도 모두 사라집니다. 삭제하시겠습니까?')">
+      <button type="submit" class="btn btn-danger">삭제</button>
+    </form>
+  </div>
+</div>
+
+{% if rows %}
+{# ── 요약 ── #}
+{% set latest = rows[0].snap %}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">현재 리뷰 수</div>
+    <div style="font-size:26px;font-weight:800">
+      {% if latest.review_count is not none %}{{ '{:,}'.format(latest.review_count) }}{% else %}-{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">전일 대비 리뷰</div>
+    {% set rd = rows[0].review_diff %}
+    <div style="font-size:26px;font-weight:800;color:{{ '#10b981' if rd and rd > 0 else '#9ca3af' }}">
+      {% if rd is not none %}{{ '+' if rd > 0 else '' }}{{ rd }}{% else %}-{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">현재 가격</div>
+    <div style="font-size:22px;font-weight:800">
+      {% if latest.price is not none %}{{ '{:,}'.format(latest.price) }}원{% else %}-{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">수집 기간</div>
+    <div style="font-size:22px;font-weight:800">{{ rows|length }}일</div>
+  </div>
+</div>
+
+{# ── 이력 테이블 ── #}
+<div class="card" style="padding:0;overflow:hidden">
+  <table>
+    <thead>
+      <tr>
+        <th>날짜</th>
+        <th class="tr">리뷰 수</th>
+        <th class="tr">리뷰 증가 (추정 판매)</th>
+        <th class="tr">가격</th>
+        <th class="tr">가격 변동</th>
+        <th class="tc">평점</th>
+        <th class="tc">상태</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+    {% set s = row.snap %}
+    <tr>
+      <td style="font-weight:600;white-space:nowrap">{{ s.collected_at }}</td>
+      <td class="tr">
+        {% if s.review_count is not none %}{{ '{:,}'.format(s.review_count) }}{% else %}-{% endif %}
+      </td>
+      <td class="tr" style="font-weight:700">
+        {% if row.review_diff is not none %}
+          {% if row.review_diff > 0 %}
+            <span class="up">+{{ row.review_diff }}개</span>
+          {% elif row.review_diff == 0 %}
+            <span class="gray">0</span>
+          {% else %}
+            <span class="dn">{{ row.review_diff }}개</span>
+          {% endif %}
+        {% else %}<span class="gray">-</span>{% endif %}
+      </td>
+      <td class="tr">
+        {% if s.price is not none %}{{ '{:,}'.format(s.price) }}원{% else %}-{% endif %}
+      </td>
+      <td class="tr">
+        {% if row.price_diff is not none and row.price_diff != 0 %}
+          <span class="{{ 'dn' if row.price_diff > 0 else 'up' }}">
+            {{ '+' if row.price_diff > 0 else '' }}{{ '{:,}'.format(row.price_diff) }}원
+          </span>
+        {% else %}<span class="gray">-</span>{% endif %}
+      </td>
+      <td class="tc">
+        {% if s.rating is not none %}⭐ {{ '%.1f'|format(s.rating) }}{% else %}-{% endif %}
+      </td>
+      <td class="tc">
+        {% if s.error %}
+          <span class="badge bg-red" title="{{ s.error }}">오류</span>
+        {% elif s.review_count is not none %}
+          <span class="badge bg-green">정상</span>
+        {% else %}
+          <span class="badge bg-gray">-</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% else %}
+<div class="card" style="padding:60px;text-align:center;color:#aaa">
+  수집된 데이터가 없습니다. 지금 수집 버튼을 눌러주세요.
+</div>
+{% endif %}
+
+<script>
+function collectOne(pid, btn) {
+  btn.disabled = true;
+  btn.textContent = '수집중...';
+  fetch('/collect/' + pid, {method: 'POST'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      btn.textContent = d.ok ? '완료!' : '실패';
+      setTimeout(function(){ location.reload(); }, 1200);
+    });
+}
+</script>
+{% endblock %}
