@@ -74,9 +74,9 @@ def scrape_naver(url):
 
         next_script = soup.find('script', {'id': '__NEXT_DATA__'})
         if not next_script or not next_script.string:
-            # __NEXT_DATA__ 없음 → 로그인 요구 또는 봇 차단 페이지
             title = soup.find('title')
-            result['error'] = f'NO_NEXT_DATA (title={title.text[:60] if title else "?"})'
+            snippet = content[:200].replace('\n', ' ')
+            result['error'] = f'NO_NEXT_DATA title={title.text[:40] if title else "없음"} | html={snippet}'
             return result
 
         s = next_script.string
