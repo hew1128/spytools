@@ -1,9 +1,9 @@
 {
   "build": {
-    "builder": "NIXPACKS"
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "gunicorn app:app --workers 1 --timeout 120",
     "restartPolicyType": "ON_FAILURE"
   }
 }
