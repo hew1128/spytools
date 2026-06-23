@@ -439,13 +439,16 @@ def group_create():
 @app.route('/group/delete', methods=['POST'])
 def group_delete_route():
     name = (request.get_json() or {}).get('name', '').strip()
-    if not name or name == '기타':
-        return jsonify({'ok': False, 'error': '삭제 불가'})
+    if not name:
+        return jsonify({'ok': False, 'error': '이름 없음'})
     groups = get_all_groups()
+    if len(groups) <= 1:
+        return jsonify({'ok': False, 'error': '그룹이 1개뿐이라 삭제할 수 없습니다'})
     if name in groups:
         groups.remove(name)
+    fallback = groups[0] if groups else '기타'
     conn = get_db()
-    conn.execute("UPDATE products SET group_name='기타' WHERE group_name=? AND is_active=1", (name,))
+    conn.execute("UPDATE products SET group_name=? WHERE group_name=? AND is_active=1", (fallback, name))
     conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('groups',?)",
                  (json.dumps(groups),))
     conn.commit()
