@@ -62,7 +62,7 @@
       var products = [
         {% for item in items %}
         {
-          name: {{ item.product.name | tojson }},
+          name: {{ (item.product.memo or item.product.name) | tojson }},
           snaps: [
             {% for snap in item.chart_snaps %}
             { date: {{ snap.date | tojson }}, count: {{ snap.count }} }{% if not loop.last %},{% endif %}
