@@ -1,53 +1,72 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="ph">
-  <div><h1>대시보드</h1><p>경쟁 상품 추적 현황</p></div>
-  <a href="/add" class="btn btn-primary">+ 상품 추가</a>
+  <div>
+    <h1>대시보드</h1>
+    <p>경쟁 상품 추적 현황</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <button onclick="showAddGroupForm()" class="btn btn-secondary">+ 그룹 추가</button>
+    <a href="/add" class="btn btn-primary">+ 상품 추가</a>
+  </div>
 </div>
 
-{% if groups %}
+<!-- 그룹 추가 폼 -->
+<div id="add-group-form" style="display:none;margin-bottom:12px;background:#f9fafb;border:1px solid #e5e7eb;
+     border-radius:8px;padding:12px 16px;display:flex;gap:8px;align-items:center">
+  <input type="text" id="new-group-name" class="form-control"
+         placeholder="새 그룹명 입력" style="width:200px;margin:0"
+         onkeydown="if(event.key==='Enter')createGroup()">
+  <button onclick="createGroup()" class="btn btn-primary btn-sm">만들기</button>
+  <button onclick="hideAddGroupForm()" class="btn btn-secondary btn-sm">취소</button>
+</div>
+<div id="add-group-form-hidden" style="display:none;margin-bottom:12px"></div>
 
+{% if groups %}
 <p style="font-size:12px;color:#aaa;margin-bottom:8px">
-  그룹과 상품을 드래그해서 순서를 바꿀 수 있습니다.
+  그룹 제목 드래그 → 그룹 순서 변경 · 행 왼쪽 <span style="font-size:14px">⠿</span> 드래그 → 다른 그룹으로 이동
 </p>
 
 <div id="group-list">
 {% for gname, items in groups %}
-<div class="group-block" data-group="{{ gname }}" style="margin-bottom:16px">
+<div class="group-block" data-group="{{ gname }}" style="margin-bottom:12px">
   <div class="group-header" style="display:flex;align-items:center;gap:8px;
        background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px 8px 0 0;
-       padding:10px 14px;cursor:grab;user-select:none">
-    <span class="drag-icon" style="color:#9ca3af;font-size:16px">⠿</span>
+       padding:10px 14px;cursor:grab;user-select:none" draggable="false">
+    <span style="color:#9ca3af;font-size:16px;flex-shrink:0">⠿</span>
     <span style="font-weight:700;font-size:15px;flex:1">{{ gname }}</span>
-    <span style="font-size:12px;color:#6b7280">{{ items|length }}개</span>
-    <button onclick="toggleGroup('{{ gname }}')" class="btn btn-sm btn-secondary"
-            style="padding:2px 10px;font-size:12px" id="tog_{{ loop.index }}">접기</button>
+    <span class="group-count" style="font-size:12px;color:#6b7280;flex-shrink:0">{{ items|length }}개</span>
+    {% if gname != '기타' %}
+    <button onclick="deleteGroup('{{ gname }}')" title="그룹 삭제 (상품은 기타로 이동)"
+            style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:16px;
+                   padding:0 2px;line-height:1;flex-shrink:0" onmousedown="event.stopPropagation()">✕</button>
+    {% endif %}
+    <button onclick="toggleGroup(this)" class="btn btn-sm btn-secondary"
+            style="padding:2px 10px;font-size:12px;flex-shrink:0"
+            onmousedown="event.stopPropagation()">접기</button>
   </div>
-  <div class="group-body" id="gb_{{ loop.index }}"
-       style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+  <div class="group-body" style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="background:#fafafa;font-size:12px;color:#6b7280">
-          <th style="padding:6px 12px;text-align:left;width:28px"></th>
+          <th style="padding:6px 4px 6px 12px;width:24px"></th>
           <th style="padding:6px 12px;text-align:left">상품명</th>
           <th style="padding:6px 8px;text-align:center;width:70px">플랫폼</th>
           <th style="padding:6px 8px;text-align:right;width:90px">현재 리뷰</th>
           <th style="padding:6px 8px;text-align:right;width:80px">전일 대비</th>
           <th style="padding:6px 8px;text-align:right;width:90px">현재 가격</th>
           <th style="padding:6px 8px;text-align:center;width:90px">마지막 수집</th>
-          <th style="padding:6px 8px;text-align:center;width:60px">상태</th>
-          <th style="padding:6px 12px;text-align:right;width:150px"></th>
+          <th style="padding:6px 8px;text-align:center;width:56px">상태</th>
+          <th style="padding:6px 12px;text-align:right;width:160px"></th>
         </tr>
       </thead>
       <tbody class="product-list" data-group="{{ gname }}">
       {% for item in items %}
       {% set p = item.product %}
       {% set s = item.latest %}
-      <tr class="product-row" data-pid="{{ p.id }}"
-          style="border-top:1px solid #f3f4f6;transition:background .15s">
+      <tr class="product-row" data-pid="{{ p.id }}" style="border-top:1px solid #f3f4f6">
         <td style="padding:10px 4px 10px 12px">
-          <span class="prod-drag-icon" style="color:#d1d5db;cursor:grab;font-size:14px;
-                display:inline-block;line-height:1">⠿</span>
+          <span class="prod-drag-icon" style="color:#d1d5db;cursor:grab;font-size:14px;line-height:1;display:block">⠿</span>
         </td>
         <td style="padding:10px 12px">
           <div style="font-weight:600">
@@ -61,9 +80,7 @@
           </span>
         </td>
         <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:15px">
-          {% if s and s.review_count is not none %}
-            {{ '{:,}'.format(s.review_count) }}
-          {% else %}-{% endif %}
+          {% if s and s.review_count is not none %}{{ '{:,}'.format(s.review_count) }}{% else %}-{% endif %}
         </td>
         <td style="padding:10px 8px;text-align:right;font-size:15px;font-weight:700">
           {% if item.review_diff is not none %}
@@ -118,25 +135,58 @@
 {% endif %}
 
 <script>
-// ── 그룹 접기 ─────────────────────────────────────────
-function toggleGroup(gname) {
-  var groupBlocks = document.querySelectorAll('.group-block');
-  groupBlocks.forEach(function(blk) {
-    if (blk.dataset.group === gname) {
-      var body = blk.querySelector('.group-body');
-      var btn  = blk.querySelector('button[onclick*="toggleGroup"]');
-      if (body.style.display === 'none') {
-        body.style.display = '';
-        btn.textContent = '접기';
-      } else {
-        body.style.display = 'none';
-        btn.textContent = '펼치기';
-      }
-    }
+// ─────────────────────────────────────────────────────────
+// 그룹 추가 / 삭제
+// ─────────────────────────────────────────────────────────
+function showAddGroupForm() {
+  var form = document.getElementById('add-group-form');
+  form.style.display = 'flex';
+  document.getElementById('new-group-name').focus();
+}
+function hideAddGroupForm() {
+  document.getElementById('add-group-form').style.display = 'none';
+  document.getElementById('new-group-name').value = '';
+}
+function createGroup() {
+  var name = document.getElementById('new-group-name').value.trim();
+  if (!name) return;
+  fetch('/group/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) location.reload();
+    else alert('생성 실패: ' + (d.error || ''));
+  });
+}
+function deleteGroup(name) {
+  if (!confirm('"' + name + '" 그룹을 삭제하시겠습니까?\n(안에 있는 상품은 기타 그룹으로 이동됩니다)')) return;
+  fetch('/group/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name})
+  }).then(function(r){ return r.json(); }).then(function(d){
+    if (d.ok) location.reload();
   });
 }
 
-// ── 수집 ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// 그룹 접기
+// ─────────────────────────────────────────────────────────
+function toggleGroup(btn) {
+  var body = btn.closest('.group-block').querySelector('.group-body');
+  if (body.style.display === 'none') {
+    body.style.display = '';
+    btn.textContent = '접기';
+  } else {
+    body.style.display = 'none';
+    btn.textContent = '펼치기';
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// 수집
+// ─────────────────────────────────────────────────────────
 function collectOne(pid, btn) {
   btn.disabled = true;
   btn.textContent = '수집중...';
@@ -146,48 +196,48 @@ function collectOne(pid, btn) {
       btn.textContent = d.ok ? '완료!' : '실패';
       setTimeout(function(){ location.reload(); }, 1200);
     })
-    .catch(function(){
-      btn.textContent = '오류';
-      btn.disabled = false;
-    });
+    .catch(function(){ btn.textContent = '오류'; btn.disabled = false; });
 }
 
-// ── 드래그 앤 드롭 ────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// 드래그 앤 드롭
+// ─────────────────────────────────────────────────────────
 (function() {
   var dragging = null;
-  var dragType = null; // 'group' | 'product'
   var placeholder = null;
+  var dragType = null;
 
-  function makePlaceholder(h, cls) {
-    var el = document.createElement(cls === 'tr' ? 'tr' : 'div');
-    el.style.cssText = 'background:#ede9fe;opacity:.5;border-radius:6px;height:' + h + 'px;transition:height .1s';
-    if (cls === 'tr') {
-      el.innerHTML = '<td colspan="9" style="padding:0;height:' + h + 'px;background:#ede9fe"></td>';
-    }
-    return el;
-  }
-
-  // 그룹 드래그
+  // ── 그룹 드래그 ────────────────────────────────────────
   document.querySelectorAll('.group-header').forEach(function(hdr) {
     hdr.addEventListener('mousedown', function(e) {
-      if (e.target.tagName === 'BUTTON') return;
+      if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
+      e.preventDefault();
       var blk = hdr.closest('.group-block');
+      var rect = blk.getBoundingClientRect();
       dragType = 'group';
       dragging = blk;
-      var rect = blk.getBoundingClientRect();
-      placeholder = makePlaceholder(rect.height, 'div');
+
+      // placeholder
+      placeholder = document.createElement('div');
+      placeholder.style.cssText = 'height:' + rect.height + 'px;background:#ede9fe;border-radius:8px;margin-bottom:12px;opacity:.5';
       blk.parentNode.insertBefore(placeholder, blk.nextSibling);
-      blk.style.cssText += ';position:fixed;z-index:9999;width:' + rect.width + 'px;'
-        + 'top:' + rect.top + 'px;left:' + rect.left + 'px;opacity:.85;box-shadow:0 8px 24px rgba(0,0,0,.18)';
+
+      // float
+      blk.style.cssText = (blk.getAttribute('style') || '') +
+        ';position:fixed;z-index:9999;width:' + rect.width + 'px' +
+        ';top:' + rect.top + 'px;left:' + rect.left + 'px' +
+        ';opacity:.88;box-shadow:0 8px 24px rgba(0,0,0,.2)';
       document.body.style.cursor = 'grabbing';
-      var startY = e.clientY;
-      var startTop = rect.top;
+
+      var startY = e.clientY, startTop = rect.top;
 
       function onMove(ev) {
         var dy = ev.clientY - startY;
         dragging.style.top = (startTop + dy) + 'px';
         var midY = startTop + dy + rect.height / 2;
-        var siblings = Array.from(document.querySelectorAll('#group-list > .group-block')).filter(function(x){ return x !== dragging; });
+
+        var siblings = Array.from(document.querySelectorAll('#group-list > .group-block'))
+          .filter(function(x){ return x !== dragging; });
         for (var i = 0; i < siblings.length; i++) {
           var sr = siblings[i].getBoundingClientRect();
           if (midY < sr.top + sr.height / 2) {
@@ -195,19 +245,17 @@ function collectOne(pid, btn) {
             return;
           }
         }
-        if (siblings.length) siblings[siblings.length-1].parentNode.insertBefore(placeholder, siblings[siblings.length-1].nextSibling);
+        if (siblings.length) {
+          var last = siblings[siblings.length - 1];
+          last.parentNode.insertBefore(placeholder, last.nextSibling);
+        }
       }
 
       function onUp() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        blk.style.position = '';
-        blk.style.zIndex = '';
-        blk.style.width = '';
-        blk.style.top = '';
-        blk.style.left = '';
-        blk.style.opacity = '';
-        blk.style.boxShadow = '';
+        blk.style.position = blk.style.zIndex = blk.style.width = '';
+        blk.style.top = blk.style.left = blk.style.opacity = blk.style.boxShadow = '';
         document.body.style.cursor = '';
         placeholder.parentNode.insertBefore(blk, placeholder);
         placeholder.remove();
@@ -221,57 +269,95 @@ function collectOne(pid, btn) {
     });
   });
 
-  // 상품 드래그
-  document.querySelectorAll('.product-row').forEach(function(row) {
-    var icon = row.querySelector('.prod-drag-icon');
-    if (!icon) return;
+  // ── 상품 드래그 (그룹 간 이동 지원) ──────────────────────
+  document.querySelectorAll('.prod-drag-icon').forEach(function(icon) {
     icon.addEventListener('mousedown', function(e) {
+      e.preventDefault();
+      var row = icon.closest('.product-row');
+      var origGroup = row.closest('.product-list').dataset.group;
+      var rect = row.getBoundingClientRect();
       dragType = 'product';
       dragging = row;
-      var rect = row.getBoundingClientRect();
-      placeholder = makePlaceholder(rect.height, 'tr');
+
+      placeholder = document.createElement('tr');
+      placeholder.innerHTML = '<td colspan="9" style="padding:0;height:' + rect.height + 'px;background:#ede9fe"></td>';
       row.parentNode.insertBefore(placeholder, row.nextSibling);
-      row.style.cssText += ';position:fixed;z-index:9999;width:' + rect.width + 'px;'
-        + 'top:' + rect.top + 'px;left:' + rect.left + 'px;opacity:.85;background:#fff;'
-        + 'box-shadow:0 4px 16px rgba(0,0,0,.15);display:table';
+
+      // 행을 fixed로 띄움
+      var origDisplay = getComputedStyle(row).display;
+      row.style.cssText = [
+        'position:fixed', 'z-index:9999',
+        'top:' + rect.top + 'px', 'left:' + rect.left + 'px',
+        'width:' + rect.width + 'px', 'opacity:.9',
+        'background:#fff', 'box-shadow:0 4px 18px rgba(0,0,0,.18)',
+        'display:table'
+      ].join(';');
       document.body.style.cursor = 'grabbing';
-      var startY = e.clientY;
-      var startTop = rect.top;
+
+      var startY = e.clientY, startTop = rect.top;
+
+      function findTargetTbody(clientY) {
+        var blocks = document.querySelectorAll('.group-block');
+        for (var i = 0; i < blocks.length; i++) {
+          var b = blocks[i];
+          // expanded group body
+          var body = b.querySelector('.group-body');
+          if (body && body.style.display === 'none') continue;
+          var bRect = b.getBoundingClientRect();
+          if (clientY >= bRect.top && clientY <= bRect.bottom) {
+            return b.querySelector('.product-list');
+          }
+        }
+        return null;
+      }
 
       function onMove(ev) {
         var dy = ev.clientY - startY;
         dragging.style.top = (startTop + dy) + 'px';
         var midY = startTop + dy + rect.height / 2;
-        var tbody = row.dataset.tbody_cache || row.closest('tbody');
-        var siblings = Array.from(tbody.querySelectorAll('.product-row')).filter(function(x){ return x !== dragging; });
+
+        var tb = findTargetTbody(ev.clientY);
+        if (!tb) return;
+
+        var siblings = Array.from(tb.querySelectorAll('.product-row'))
+          .filter(function(x){ return x !== dragging; });
+        var placed = false;
         for (var i = 0; i < siblings.length; i++) {
           var sr = siblings[i].getBoundingClientRect();
           if (midY < sr.top + sr.height / 2) {
-            tbody.insertBefore(placeholder, siblings[i]);
-            return;
+            tb.insertBefore(placeholder, siblings[i]);
+            placed = true;
+            break;
           }
         }
-        if (siblings.length) tbody.insertBefore(placeholder, siblings[siblings.length-1].nextSibling);
+        if (!placed) tb.appendChild(placeholder);
       }
 
       function onUp() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        var tbody = row.closest('tbody') || placeholder.closest('tbody');
-        row.style.position = '';
-        row.style.zIndex = '';
-        row.style.width = '';
-        row.style.top = '';
-        row.style.left = '';
-        row.style.opacity = '';
-        row.style.boxShadow = '';
-        row.style.display = '';
-        row.style.background = '';
+
+        var targetTbody = placeholder.parentNode;
+        var newGroup = targetTbody ? targetTbody.dataset.group : origGroup;
+
+        row.style.cssText = '';
         document.body.style.cursor = '';
-        placeholder.parentNode.insertBefore(row, placeholder);
+
+        if (targetTbody) {
+          targetTbody.insertBefore(row, placeholder);
+        }
         placeholder.remove();
         placeholder = null;
         dragging = null;
+
+        if (newGroup && newGroup !== origGroup) {
+          fetch('/product/' + row.dataset.pid + '/group', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({group: newGroup})
+          });
+          updateGroupCounts();
+        }
         saveProductOrder();
       }
 
@@ -280,9 +366,10 @@ function collectOne(pid, btn) {
     });
   });
 
+  // ── 순서 저장 ─────────────────────────────────────────────
   function saveGroupOrder() {
     var order = Array.from(document.querySelectorAll('#group-list > .group-block'))
-      .map(function(blk){ return blk.dataset.group; });
+      .map(function(b){ return b.dataset.group; });
     fetch('/group-order', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -292,11 +379,19 @@ function collectOne(pid, btn) {
 
   function saveProductOrder() {
     var order = Array.from(document.querySelectorAll('.product-row'))
-      .map(function(row){ return parseInt(row.dataset.pid); });
+      .map(function(r){ return parseInt(r.dataset.pid); });
     fetch('/product-order', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(order)
+    });
+  }
+
+  function updateGroupCounts() {
+    document.querySelectorAll('.group-block').forEach(function(blk) {
+      var n = blk.querySelectorAll('.product-row').length;
+      var badge = blk.querySelector('.group-count');
+      if (badge) badge.textContent = n + '개';
     });
   }
 })();

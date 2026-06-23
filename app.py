@@ -56,16 +56,41 @@ def get_setting(key, default=None):
     return row['value'] if row else default
 
 
-def sort_groups(group_keys):
-    stored = get_setting('group_order')
-    order_map = {}
+def get_all_groups():
+    stored = get_setting('groups')
     if stored:
         try:
-            for i, name in enumerate(json.loads(stored)):
-                order_map[name] = i
+            result = json.loads(stored)
+            if '기타' not in result:
+                result.append('기타')
+            return result
         except Exception:
             pass
-    return sorted(group_keys, key=lambda g: (0, order_map[g]) if g in order_map else (1, g))
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT group_name FROM products WHERE is_active=1 AND group_name IS NOT NULL"
+    ).fetchall()
+    conn.close()
+    result = [r[0] for r in rows] if rows else []
+    if '기타' not in result:
+        result.append('기타')
+    return result
+
+
+def save_groups(groups):
+    if '기타' not in groups:
+        groups = list(groups) + ['기타']
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('groups',?)",
+                 (json.dumps(groups),))
+    conn.commit()
+    conn.close()
+
+
+def sort_groups(group_keys):
+    all_groups = get_all_groups()
+    order_map = {name: i for i, name in enumerate(all_groups)}
+    return sorted(group_keys, key=lambda g: (order_map.get(g, 9999), g))
 
 init_db()
 
@@ -254,13 +279,11 @@ def dashboard():
                 review_diff = latest['review_count'] - prev['review_count']
         flat.append({'product': p, 'latest': latest, 'prev': prev, 'review_diff': review_diff})
 
-    # group
-    raw_groups = {}
+    prod_map = {}
     for item in flat:
         gname = item['product']['group_name'] or '기타'
-        raw_groups.setdefault(gname, []).append(item)
+        prod_map.setdefault(gname, []).append(item)
 
-    # apply product order within each group
     prod_order_stored = get_setting('product_order')
     prod_order = {}
     if prod_order_stored:
@@ -269,12 +292,15 @@ def dashboard():
                 prod_order[pid] = i
         except Exception:
             pass
+    for gname in prod_map:
+        prod_map[gname].sort(key=lambda x: prod_order.get(x['product']['id'], 9999))
 
-    for gname in raw_groups:
-        raw_groups[gname].sort(key=lambda x: prod_order.get(x['product']['id'], 9999))
-
-    sorted_group_keys = sort_groups(list(raw_groups.keys()))
-    groups = [(gname, raw_groups[gname]) for gname in sorted_group_keys]
+    all_groups = get_all_groups()
+    for gname in prod_map:
+        if gname not in all_groups:
+            all_groups.append(gname)
+    sorted_keys = sort_groups(all_groups)
+    groups = [(gname, prod_map.get(gname, [])) for gname in sorted_keys]
 
     conn.close()
     return render_template('dashboard.html', groups=groups)
@@ -282,10 +308,7 @@ def dashboard():
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_product():
-    conn = get_db()
-    existing_groups = [r[0] for r in conn.execute(
-        "SELECT DISTINCT group_name FROM products WHERE is_active=1 AND group_name IS NOT NULL ORDER BY group_name"
-    ).fetchall()]
+    existing_groups = get_all_groups()
     if request.method == 'POST':
         name       = request.form.get('name', '').strip()
         url        = request.form.get('url', '').strip()
@@ -294,8 +317,8 @@ def add_product():
         group_name = request.form.get('group_name', '기타').strip() or '기타'
         if not name or not url:
             flash('상품명과 URL을 입력해주세요.')
-            conn.close()
             return render_template('add.html', existing_groups=existing_groups)
+        conn = get_db()
         conn.execute(
             "INSERT INTO products (name,url,platform,memo,group_name) VALUES (?,?,?,?,?)",
             (name, url, platform, memo, group_name)
@@ -304,7 +327,6 @@ def add_product():
         conn.close()
         flash(f'"{name}" 등록 완료.')
         return redirect(url_for('dashboard'))
-    conn.close()
     return render_template('add.html', existing_groups=existing_groups)
 
 
@@ -361,9 +383,7 @@ def edit_product(pid):
     product = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
     if not product:
         return redirect(url_for('dashboard'))
-    existing_groups = [r[0] for r in conn.execute(
-        "SELECT DISTINCT group_name FROM products WHERE is_active=1 AND group_name IS NOT NULL ORDER BY group_name"
-    ).fetchall()]
+    existing_groups = get_all_groups()
     if request.method == 'POST':
         name       = request.form.get('name', '').strip()
         url        = request.form.get('url', '').strip()
@@ -387,11 +407,7 @@ def group_order():
     order = request.get_json()
     if not isinstance(order, list):
         return jsonify({'ok': False}), 400
-    conn = get_db()
-    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('group_order',?)",
-                 (json.dumps(order),))
-    conn.commit()
-    conn.close()
+    save_groups(order)
     return jsonify({'ok': True})
 
 
@@ -403,6 +419,45 @@ def product_order():
     conn = get_db()
     conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('product_order',?)",
                  (json.dumps(order),))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/group/create', methods=['POST'])
+def group_create():
+    name = (request.get_json() or {}).get('name', '').strip()
+    if not name:
+        return jsonify({'ok': False, 'error': '이름 없음'})
+    groups = get_all_groups()
+    if name not in groups:
+        groups.append(name)
+        save_groups(groups)
+    return jsonify({'ok': True})
+
+
+@app.route('/group/delete', methods=['POST'])
+def group_delete_route():
+    name = (request.get_json() or {}).get('name', '').strip()
+    if not name or name == '기타':
+        return jsonify({'ok': False, 'error': '삭제 불가'})
+    groups = get_all_groups()
+    if name in groups:
+        groups.remove(name)
+    conn = get_db()
+    conn.execute("UPDATE products SET group_name='기타' WHERE group_name=? AND is_active=1", (name,))
+    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('groups',?)",
+                 (json.dumps(groups),))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/product/<int:pid>/group', methods=['POST'])
+def move_product_group(pid):
+    group = (request.get_json() or {}).get('group', '기타').strip() or '기타'
+    conn = get_db()
+    conn.execute("UPDATE products SET group_name=? WHERE id=?", (group, pid))
     conn.commit()
     conn.close()
     return jsonify({'ok': True})
