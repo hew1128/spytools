@@ -60,10 +60,7 @@ def get_all_groups():
     stored = get_setting('groups')
     if stored:
         try:
-            result = json.loads(stored)
-            if '기타' not in result:
-                result.append('기타')
-            return result
+            return json.loads(stored)
         except Exception:
             pass
     conn = get_db()
@@ -71,15 +68,10 @@ def get_all_groups():
         "SELECT DISTINCT group_name FROM products WHERE is_active=1 AND group_name IS NOT NULL"
     ).fetchall()
     conn.close()
-    result = [r[0] for r in rows] if rows else []
-    if '기타' not in result:
-        result.append('기타')
-    return result
+    return [r[0] for r in rows] if rows else ['기타']
 
 
 def save_groups(groups):
-    if '기타' not in groups:
-        groups = list(groups) + ['기타']
     conn = get_db()
     conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('groups',?)",
                  (json.dumps(groups),))
