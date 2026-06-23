@@ -1,0 +1,38 @@
+# 염탐기 버전 기록
+
+서비스 URL: https://web-production-54ce2d.up.railway.app
+GitHub: https://github.com/hew1128/spytools
+DB 경로 (Railway): /app/data/spy.db
+
+---
+
+## v3 (2026-06-23) — 그룹 시스템 + 드래그 순서 배치
+- products 테이블에 group_name 컬럼 추가 (기존 DB 자동 마이그레이션)
+- settings 테이블 추가 (그룹/상품 순서 영구 저장)
+- 대시보드: 그룹별 카드 UI, 접기/펼치기, 마우스 드래그로 그룹/상품 순서 변경
+- /group-order, /product-order POST 엔드포인트 추가
+- 상품 추가/수정 폼에 그룹명 입력 필드 (datalist로 기존 그룹 자동완성)
+- 메모 placeholder 한국어로 변경
+코드 스냅샷: 염탐기_v3_260623.txt
+
+---
+
+## v2 (2026-06-23) — 로컬 수집기 + 삭제 버튼
+- collect_local.py: naver_session 폴더로 세션 유지, 자동 로그인
+- 리뷰수 수집: data-shp-area="sprvsub.rvmore" 셀렉터로 라이브 DOM 직접 읽기
+- 대시보드 삭제 버튼 추가
+- /api/products, /api/push 엔드포인트 추가 (로컬 수집기용)
+- 염탐기수집.bat 더블클릭 실행 파일 추가
+코드 스냅샷: 염탐기_v2_260623.txt
+
+---
+
+## v1 (2026-06-22) — 초기 배포
+- 경쟁상품 추적 앱 초기 버전
+- 네이버 스마트스토어 / 쿠팡 상품 URL 등록
+- 매일 오전 7시 자동 수집 (APScheduler)
+- 리뷰 수, 평점, 가격 스냅샷 저장
+- 대시보드: 일별 리뷰 증가량(추정 판매) 표시
+- 90일 히스토리 상세 페이지
+- Railway + Volume(/app/data) + DB_PATH 환경변수 설정
+코드 스냅샷: 염탐기_v1_260622.txt

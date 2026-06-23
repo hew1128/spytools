@@ -34,9 +34,21 @@
       <div style="font-size:11px;color:#aaa;margin-top:4px">상품 상세 페이지 URL을 붙여넣으세요</div>
     </div>
     <div class="form-group">
+      <label>그룹</label>
+      <input type="text" name="group_name" class="form-control"
+             placeholder="예: 호스류, 주방용품"
+             list="group-list" autocomplete="off">
+      <datalist id="group-list">
+        {% for g in existing_groups %}
+        <option value="{{ g }}">
+        {% endfor %}
+      </datalist>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">기존 그룹 선택 또는 새 그룹명 입력 (비워두면 '기타')</div>
+    </div>
+    <div class="form-group">
       <label>메모</label>
       <input type="text" name="memo" class="form-control"
-             placeholder="예: 메인 경쟁사, 가격 비슷">
+             placeholder="예: 메인 경쟁사, 가격 비슷, 추이 중요">
     </div>
     <div style="display:flex;gap:10px">
       <button type="submit" class="btn btn-primary">추가</button>

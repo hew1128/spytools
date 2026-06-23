@@ -23,8 +23,20 @@
       <input type="url" name="url" class="form-control" required value="{{ product.url }}">
     </div>
     <div class="form-group">
+      <label>그룹</label>
+      <input type="text" name="group_name" class="form-control"
+             value="{{ product.group_name or '기타' }}"
+             list="group-list" autocomplete="off">
+      <datalist id="group-list">
+        {% for g in existing_groups %}
+        <option value="{{ g }}">
+        {% endfor %}
+      </datalist>
+    </div>
+    <div class="form-group">
       <label>메모</label>
-      <input type="text" name="memo" class="form-control" value="{{ product.memo or '' }}">
+      <input type="text" name="memo" class="form-control" value="{{ product.memo or '' }}"
+             placeholder="예: 메인 경쟁사, 가격 비슷">
     </div>
     <div style="display:flex;gap:10px">
       <button type="submit" class="btn btn-primary">저장</button>

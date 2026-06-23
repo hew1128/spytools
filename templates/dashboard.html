@@ -5,87 +5,110 @@
   <a href="/add" class="btn btn-primary">+ 상품 추가</a>
 </div>
 
-{% if items %}
-<div class="card" style="padding:0;overflow:hidden">
-  <table>
-    <thead>
-      <tr>
-        <th>상품명</th>
-        <th class="tc">플랫폼</th>
-        <th class="tr">현재 리뷰 수</th>
-        <th class="tr">전일 대비</th>
-        <th class="tr">현재 가격</th>
-        <th class="tc">마지막 수집</th>
-        <th class="tc">상태</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for item in items %}
-    {% set p = item.product %}
-    {% set s = item.latest %}
-    <tr>
-      <td>
-        <div style="font-weight:600">
-          <a href="/product/{{ p.id }}" style="color:#4f46e5">{{ p.name }}</a>
-        </div>
-        {% if p.memo %}<div style="font-size:11px;color:#9ca3af;margin-top:2px">{{ p.memo }}</div>{% endif %}
-      </td>
-      <td class="tc">
-        <span class="badge {{ 'bg-green' if p.platform=='naver' else 'bg-blue' }}">
-          {{ '네이버' if p.platform=='naver' else '쿠팡' }}
-        </span>
-      </td>
-      <td class="tr" style="font-weight:700;font-size:15px">
-        {% if s and s.review_count is not none %}
-          {{ '{:,}'.format(s.review_count) }}
-        {% else %}-{% endif %}
-      </td>
-      <td class="tr" style="font-size:15px;font-weight:700">
-        {% if item.review_diff is not none %}
-          {% if item.review_diff > 0 %}
-            <span class="up">+{{ item.review_diff }}</span>
-          {% elif item.review_diff < 0 %}
-            <span class="dn">{{ item.review_diff }}</span>
+{% if groups %}
+
+<p style="font-size:12px;color:#aaa;margin-bottom:8px">
+  그룹과 상품을 드래그해서 순서를 바꿀 수 있습니다.
+</p>
+
+<div id="group-list">
+{% for gname, items in groups %}
+<div class="group-block" data-group="{{ gname }}" style="margin-bottom:16px">
+  <div class="group-header" style="display:flex;align-items:center;gap:8px;
+       background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px 8px 0 0;
+       padding:10px 14px;cursor:grab;user-select:none">
+    <span class="drag-icon" style="color:#9ca3af;font-size:16px">⠿</span>
+    <span style="font-weight:700;font-size:15px;flex:1">{{ gname }}</span>
+    <span style="font-size:12px;color:#6b7280">{{ items|length }}개</span>
+    <button onclick="toggleGroup('{{ gname }}')" class="btn btn-sm btn-secondary"
+            style="padding:2px 10px;font-size:12px" id="tog_{{ loop.index }}">접기</button>
+  </div>
+  <div class="group-body" id="gb_{{ loop.index }}"
+       style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="background:#fafafa;font-size:12px;color:#6b7280">
+          <th style="padding:6px 12px;text-align:left;width:28px"></th>
+          <th style="padding:6px 12px;text-align:left">상품명</th>
+          <th style="padding:6px 8px;text-align:center;width:70px">플랫폼</th>
+          <th style="padding:6px 8px;text-align:right;width:90px">현재 리뷰</th>
+          <th style="padding:6px 8px;text-align:right;width:80px">전일 대비</th>
+          <th style="padding:6px 8px;text-align:right;width:90px">현재 가격</th>
+          <th style="padding:6px 8px;text-align:center;width:90px">마지막 수집</th>
+          <th style="padding:6px 8px;text-align:center;width:60px">상태</th>
+          <th style="padding:6px 12px;text-align:right;width:150px"></th>
+        </tr>
+      </thead>
+      <tbody class="product-list" data-group="{{ gname }}">
+      {% for item in items %}
+      {% set p = item.product %}
+      {% set s = item.latest %}
+      <tr class="product-row" data-pid="{{ p.id }}"
+          style="border-top:1px solid #f3f4f6;transition:background .15s">
+        <td style="padding:10px 4px 10px 12px">
+          <span class="prod-drag-icon" style="color:#d1d5db;cursor:grab;font-size:14px;
+                display:inline-block;line-height:1">⠿</span>
+        </td>
+        <td style="padding:10px 12px">
+          <div style="font-weight:600">
+            <a href="/product/{{ p.id }}" style="color:#4f46e5">{{ p.name }}</a>
+          </div>
+          {% if p.memo %}<div style="font-size:11px;color:#9ca3af;margin-top:2px">{{ p.memo }}</div>{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:center">
+          <span class="badge {{ 'bg-green' if p.platform=='naver' else 'bg-blue' }}">
+            {{ '네이버' if p.platform=='naver' else '쿠팡' }}
+          </span>
+        </td>
+        <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:15px">
+          {% if s and s.review_count is not none %}
+            {{ '{:,}'.format(s.review_count) }}
+          {% else %}-{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:right;font-size:15px;font-weight:700">
+          {% if item.review_diff is not none %}
+            {% if item.review_diff > 0 %}<span class="up">+{{ item.review_diff }}</span>
+            {% elif item.review_diff < 0 %}<span class="dn">{{ item.review_diff }}</span>
+            {% else %}<span class="gray">-</span>{% endif %}
+          {% else %}<span class="gray">-</span>{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:right">
+          {% if s and s.price is not none %}{{ '{:,}'.format(s.price) }}원{% else %}-{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:center;color:#9ca3af;font-size:12px">
+          {% if s %}{{ s.collected_at }}{% else %}-{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:center">
+          {% if s and s.error %}
+            <span class="badge bg-red" title="{{ s.error }}">오류</span>
+          {% elif s and s.review_count is not none %}
+            <span class="badge bg-green">정상</span>
           {% else %}
-            <span class="gray">-</span>
+            <span class="badge bg-gray">미수집</span>
           {% endif %}
-        {% else %}<span class="gray">-</span>{% endif %}
-      </td>
-      <td class="tr">
-        {% if s and s.price is not none %}
-          {{ '{:,}'.format(s.price) }}원
-        {% else %}-{% endif %}
-      </td>
-      <td class="tc" style="color:#9ca3af;font-size:12px">
-        {% if s %}{{ s.collected_at }}{% else %}-{% endif %}
-      </td>
-      <td class="tc">
-        {% if s and s.error %}
-          <span class="badge bg-red" title="{{ s.error }}">오류</span>
-        {% elif s and s.review_count is not none %}
-          <span class="badge bg-green">정상</span>
-        {% else %}
-          <span class="badge bg-gray">미수집</span>
-        {% endif %}
-      </td>
-      <td>
-        <div style="display:flex;gap:4px;justify-content:flex-end">
-          <button onclick="collectOne({{ p.id }}, this)" class="btn btn-success btn-sm">수집</button>
-          <a href="/product/{{ p.id }}" class="btn btn-secondary btn-sm">추이</a>
-          <form method="POST" action="/product/{{ p.id }}/delete" onsubmit="return confirm('삭제하시겠습니까?')" style="margin:0">
-            <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button>
-          </form>
-        </div>
-      </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+        </td>
+        <td style="padding:10px 12px;text-align:right">
+          <div style="display:flex;gap:4px;justify-content:flex-end">
+            <button onclick="collectOne({{ p.id }}, this)" class="btn btn-success btn-sm">수집</button>
+            <a href="/product/{{ p.id }}" class="btn btn-secondary btn-sm">추이</a>
+            <a href="/product/{{ p.id }}/edit" class="btn btn-secondary btn-sm">수정</a>
+            <form method="POST" action="/product/{{ p.id }}/delete"
+                  onsubmit="return confirm('삭제하시겠습니까?')" style="margin:0">
+              <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
 </div>
 
 <p style="font-size:12px;color:#aaa;margin-top:8px">
-  * 매일 오전 7시 자동 수집. 전일 대비 리뷰 증가 = 추정 판매량 지표 (실제 판매량의 1~3% 수준)
+  * 전일 대비 리뷰 증가 = 추정 판매량 지표 (실제 판매량의 1~3% 수준)
 </p>
 
 {% else %}
@@ -95,6 +118,25 @@
 {% endif %}
 
 <script>
+// ── 그룹 접기 ─────────────────────────────────────────
+function toggleGroup(gname) {
+  var groupBlocks = document.querySelectorAll('.group-block');
+  groupBlocks.forEach(function(blk) {
+    if (blk.dataset.group === gname) {
+      var body = blk.querySelector('.group-body');
+      var btn  = blk.querySelector('button[onclick*="toggleGroup"]');
+      if (body.style.display === 'none') {
+        body.style.display = '';
+        btn.textContent = '접기';
+      } else {
+        body.style.display = 'none';
+        btn.textContent = '펼치기';
+      }
+    }
+  });
+}
+
+// ── 수집 ─────────────────────────────────────────────
 function collectOne(pid, btn) {
   btn.disabled = true;
   btn.textContent = '수집중...';
@@ -109,5 +151,154 @@ function collectOne(pid, btn) {
       btn.disabled = false;
     });
 }
+
+// ── 드래그 앤 드롭 ────────────────────────────────────
+(function() {
+  var dragging = null;
+  var dragType = null; // 'group' | 'product'
+  var placeholder = null;
+
+  function makePlaceholder(h, cls) {
+    var el = document.createElement(cls === 'tr' ? 'tr' : 'div');
+    el.style.cssText = 'background:#ede9fe;opacity:.5;border-radius:6px;height:' + h + 'px;transition:height .1s';
+    if (cls === 'tr') {
+      el.innerHTML = '<td colspan="9" style="padding:0;height:' + h + 'px;background:#ede9fe"></td>';
+    }
+    return el;
+  }
+
+  // 그룹 드래그
+  document.querySelectorAll('.group-header').forEach(function(hdr) {
+    hdr.addEventListener('mousedown', function(e) {
+      if (e.target.tagName === 'BUTTON') return;
+      var blk = hdr.closest('.group-block');
+      dragType = 'group';
+      dragging = blk;
+      var rect = blk.getBoundingClientRect();
+      placeholder = makePlaceholder(rect.height, 'div');
+      blk.parentNode.insertBefore(placeholder, blk.nextSibling);
+      blk.style.cssText += ';position:fixed;z-index:9999;width:' + rect.width + 'px;'
+        + 'top:' + rect.top + 'px;left:' + rect.left + 'px;opacity:.85;box-shadow:0 8px 24px rgba(0,0,0,.18)';
+      document.body.style.cursor = 'grabbing';
+      var startY = e.clientY;
+      var startTop = rect.top;
+
+      function onMove(ev) {
+        var dy = ev.clientY - startY;
+        dragging.style.top = (startTop + dy) + 'px';
+        var midY = startTop + dy + rect.height / 2;
+        var siblings = Array.from(document.querySelectorAll('#group-list > .group-block')).filter(function(x){ return x !== dragging; });
+        for (var i = 0; i < siblings.length; i++) {
+          var sr = siblings[i].getBoundingClientRect();
+          if (midY < sr.top + sr.height / 2) {
+            siblings[i].parentNode.insertBefore(placeholder, siblings[i]);
+            return;
+          }
+        }
+        if (siblings.length) siblings[siblings.length-1].parentNode.insertBefore(placeholder, siblings[siblings.length-1].nextSibling);
+      }
+
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        blk.style.position = '';
+        blk.style.zIndex = '';
+        blk.style.width = '';
+        blk.style.top = '';
+        blk.style.left = '';
+        blk.style.opacity = '';
+        blk.style.boxShadow = '';
+        document.body.style.cursor = '';
+        placeholder.parentNode.insertBefore(blk, placeholder);
+        placeholder.remove();
+        placeholder = null;
+        dragging = null;
+        saveGroupOrder();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // 상품 드래그
+  document.querySelectorAll('.product-row').forEach(function(row) {
+    var icon = row.querySelector('.prod-drag-icon');
+    if (!icon) return;
+    icon.addEventListener('mousedown', function(e) {
+      dragType = 'product';
+      dragging = row;
+      var rect = row.getBoundingClientRect();
+      placeholder = makePlaceholder(rect.height, 'tr');
+      row.parentNode.insertBefore(placeholder, row.nextSibling);
+      row.style.cssText += ';position:fixed;z-index:9999;width:' + rect.width + 'px;'
+        + 'top:' + rect.top + 'px;left:' + rect.left + 'px;opacity:.85;background:#fff;'
+        + 'box-shadow:0 4px 16px rgba(0,0,0,.15);display:table';
+      document.body.style.cursor = 'grabbing';
+      var startY = e.clientY;
+      var startTop = rect.top;
+
+      function onMove(ev) {
+        var dy = ev.clientY - startY;
+        dragging.style.top = (startTop + dy) + 'px';
+        var midY = startTop + dy + rect.height / 2;
+        var tbody = row.dataset.tbody_cache || row.closest('tbody');
+        var siblings = Array.from(tbody.querySelectorAll('.product-row')).filter(function(x){ return x !== dragging; });
+        for (var i = 0; i < siblings.length; i++) {
+          var sr = siblings[i].getBoundingClientRect();
+          if (midY < sr.top + sr.height / 2) {
+            tbody.insertBefore(placeholder, siblings[i]);
+            return;
+          }
+        }
+        if (siblings.length) tbody.insertBefore(placeholder, siblings[siblings.length-1].nextSibling);
+      }
+
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        var tbody = row.closest('tbody') || placeholder.closest('tbody');
+        row.style.position = '';
+        row.style.zIndex = '';
+        row.style.width = '';
+        row.style.top = '';
+        row.style.left = '';
+        row.style.opacity = '';
+        row.style.boxShadow = '';
+        row.style.display = '';
+        row.style.background = '';
+        document.body.style.cursor = '';
+        placeholder.parentNode.insertBefore(row, placeholder);
+        placeholder.remove();
+        placeholder = null;
+        dragging = null;
+        saveProductOrder();
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+
+  function saveGroupOrder() {
+    var order = Array.from(document.querySelectorAll('#group-list > .group-block'))
+      .map(function(blk){ return blk.dataset.group; });
+    fetch('/group-order', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(order)
+    });
+  }
+
+  function saveProductOrder() {
+    var order = Array.from(document.querySelectorAll('.product-row'))
+      .map(function(row){ return parseInt(row.dataset.pid); });
+    fetch('/product-order', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(order)
+    });
+  }
+})();
 </script>
 {% endblock %}

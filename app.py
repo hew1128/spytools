@@ -23,9 +23,14 @@ def init_db():
         url TEXT NOT NULL,
         platform TEXT DEFAULT 'naver',
         memo TEXT,
+        group_name TEXT DEFAULT '기타',
         is_active INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    try:
+        c.execute("ALTER TABLE products ADD COLUMN group_name TEXT DEFAULT '기타'")
+    except Exception:
+        pass
     c.execute('''CREATE TABLE IF NOT EXISTS snapshots (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER NOT NULL,
@@ -36,8 +41,31 @@ def init_db():
         collected_at TEXT NOT NULL,
         FOREIGN KEY (product_id) REFERENCES products(id)
     )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )''')
     conn.commit()
     conn.close()
+
+
+def get_setting(key, default=None):
+    conn = get_db()
+    row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    conn.close()
+    return row['value'] if row else default
+
+
+def sort_groups(group_keys):
+    stored = get_setting('group_order')
+    order_map = {}
+    if stored:
+        try:
+            for i, name in enumerate(json.loads(stored)):
+                order_map[name] = i
+        except Exception:
+            pass
+    return sorted(group_keys, key=lambda g: (0, order_map[g]) if g in order_map else (1, g))
 
 init_db()
 
@@ -210,7 +238,9 @@ def dashboard():
     products = conn.execute(
         "SELECT * FROM products WHERE is_active=1 ORDER BY id"
     ).fetchall()
-    items = []
+
+    # build flat item list
+    flat = []
     for p in products:
         snaps = conn.execute(
             "SELECT * FROM snapshots WHERE product_id=? ORDER BY collected_at DESC LIMIT 2",
@@ -218,37 +248,64 @@ def dashboard():
         ).fetchall()
         latest = snaps[0] if snaps else None
         prev   = snaps[1] if len(snaps) > 1 else None
-
         review_diff = None
         if latest and prev:
             if latest['review_count'] is not None and prev['review_count'] is not None:
                 review_diff = latest['review_count'] - prev['review_count']
+        flat.append({'product': p, 'latest': latest, 'prev': prev, 'review_diff': review_diff})
 
-        items.append({'product': p, 'latest': latest, 'prev': prev, 'review_diff': review_diff})
+    # group
+    raw_groups = {}
+    for item in flat:
+        gname = item['product']['group_name'] or '기타'
+        raw_groups.setdefault(gname, []).append(item)
+
+    # apply product order within each group
+    prod_order_stored = get_setting('product_order')
+    prod_order = {}
+    if prod_order_stored:
+        try:
+            for i, pid in enumerate(json.loads(prod_order_stored)):
+                prod_order[pid] = i
+        except Exception:
+            pass
+
+    for gname in raw_groups:
+        raw_groups[gname].sort(key=lambda x: prod_order.get(x['product']['id'], 9999))
+
+    sorted_group_keys = sort_groups(list(raw_groups.keys()))
+    groups = [(gname, raw_groups[gname]) for gname in sorted_group_keys]
+
     conn.close()
-    return render_template('dashboard.html', items=items)
+    return render_template('dashboard.html', groups=groups)
 
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_product():
+    conn = get_db()
+    existing_groups = [r[0] for r in conn.execute(
+        "SELECT DISTINCT group_name FROM products WHERE is_active=1 AND group_name IS NOT NULL ORDER BY group_name"
+    ).fetchall()]
     if request.method == 'POST':
-        name     = request.form.get('name', '').strip()
-        url      = request.form.get('url', '').strip()
-        platform = request.form.get('platform', 'naver')
-        memo     = request.form.get('memo', '').strip()
+        name       = request.form.get('name', '').strip()
+        url        = request.form.get('url', '').strip()
+        platform   = request.form.get('platform', 'naver')
+        memo       = request.form.get('memo', '').strip()
+        group_name = request.form.get('group_name', '기타').strip() or '기타'
         if not name or not url:
             flash('상품명과 URL을 입력해주세요.')
-            return render_template('add.html')
-        conn = get_db()
+            conn.close()
+            return render_template('add.html', existing_groups=existing_groups)
         conn.execute(
-            "INSERT INTO products (name,url,platform,memo) VALUES (?,?,?,?)",
-            (name, url, platform, memo)
+            "INSERT INTO products (name,url,platform,memo,group_name) VALUES (?,?,?,?,?)",
+            (name, url, platform, memo, group_name)
         )
         conn.commit()
         conn.close()
         flash(f'"{name}" 등록 완료.')
         return redirect(url_for('dashboard'))
-    return render_template('add.html')
+    conn.close()
+    return render_template('add.html', existing_groups=existing_groups)
 
 
 @app.route('/product/<int:pid>')
@@ -304,21 +361,51 @@ def edit_product(pid):
     product = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
     if not product:
         return redirect(url_for('dashboard'))
+    existing_groups = [r[0] for r in conn.execute(
+        "SELECT DISTINCT group_name FROM products WHERE is_active=1 AND group_name IS NOT NULL ORDER BY group_name"
+    ).fetchall()]
     if request.method == 'POST':
-        name     = request.form.get('name', '').strip()
-        url      = request.form.get('url', '').strip()
-        platform = request.form.get('platform', 'naver')
-        memo     = request.form.get('memo', '').strip()
+        name       = request.form.get('name', '').strip()
+        url        = request.form.get('url', '').strip()
+        platform   = request.form.get('platform', 'naver')
+        memo       = request.form.get('memo', '').strip()
+        group_name = request.form.get('group_name', '기타').strip() or '기타'
         conn.execute(
-            "UPDATE products SET name=?,url=?,platform=?,memo=? WHERE id=?",
-            (name, url, platform, memo, pid)
+            "UPDATE products SET name=?,url=?,platform=?,memo=?,group_name=? WHERE id=?",
+            (name, url, platform, memo, group_name, pid)
         )
         conn.commit()
         conn.close()
         flash('수정 완료')
         return redirect(url_for('product_detail', pid=pid))
     conn.close()
-    return render_template('edit.html', product=product)
+    return render_template('edit.html', product=product, existing_groups=existing_groups)
+
+
+@app.route('/group-order', methods=['POST'])
+def group_order():
+    order = request.get_json()
+    if not isinstance(order, list):
+        return jsonify({'ok': False}), 400
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('group_order',?)",
+                 (json.dumps(order),))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/product-order', methods=['POST'])
+def product_order():
+    order = request.get_json()
+    if not isinstance(order, list):
+        return jsonify({'ok': False}), 400
+    conn = get_db()
+    conn.execute("INSERT OR REPLACE INTO settings (key,value) VALUES ('product_order',?)",
+                 (json.dumps(order),))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
 
 
 @app.route('/product/<int:pid>/delete', methods=['POST'])
