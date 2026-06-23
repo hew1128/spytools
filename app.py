@@ -269,7 +269,13 @@ def dashboard():
         if latest and prev:
             if latest['review_count'] is not None and prev['review_count'] is not None:
                 review_diff = latest['review_count'] - prev['review_count']
-        flat.append({'product': p, 'latest': latest, 'prev': prev, 'review_diff': review_diff})
+        chart_rows = conn.execute(
+            "SELECT collected_at, review_count FROM snapshots WHERE product_id=? AND review_count IS NOT NULL ORDER BY collected_at ASC LIMIT 30",
+            (p['id'],)
+        ).fetchall()
+        chart_snaps = [{'date': r['collected_at'], 'count': r['review_count']} for r in chart_rows]
+        flat.append({'product': p, 'latest': latest, 'prev': prev,
+                     'review_diff': review_diff, 'chart_snaps': chart_snaps})
 
     prod_map = {}
     for item in flat:

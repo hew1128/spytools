@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <div class="ph">
   <div>
     <h1>대시보드</h1>
@@ -36,6 +37,11 @@
     <span style="color:rgba(255,255,255,.7);font-size:16px;flex-shrink:0">⠿</span>
     <span style="font-weight:700;font-size:15px;flex:1;color:#fff">{{ gname }}</span>
     <span class="group-count" style="font-size:12px;color:rgba(255,255,255,.8);flex-shrink:0">{{ items|length }}개</span>
+    <button onclick="toggleChart({{ loop.index }})"
+            style="padding:3px 12px;font-size:12px;background:rgba(255,255,255,.2);
+                   color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;
+                   cursor:pointer;flex-shrink:0"
+            onmousedown="event.stopPropagation()">📈 추이</button>
     <button onclick="toggleGroup(this)"
             style="padding:3px 12px;font-size:12px;background:rgba(255,255,255,.2);
                    color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:5px;
@@ -47,6 +53,78 @@
                    color:#fff;border:1px solid rgba(0,0,0,.2);border-radius:5px;
                    cursor:pointer;flex-shrink:0"
             onmousedown="event.stopPropagation()">삭제</button>
+  </div>
+  <div id="chart-section-{{ loop.index }}" style="display:none;border:1px solid #e5e7eb;
+       border-top:none;padding:16px;background:#fff">
+    <canvas id="chart-canvas-{{ loop.index }}" height="80"></canvas>
+    <script>
+    (function() {
+      var products = [
+        {% for item in items %}
+        {
+          name: {{ item.product.name | tojson }},
+          snaps: [
+            {% for snap in item.chart_snaps %}
+            { date: {{ snap.date | tojson }}, count: {{ snap.count }} }{% if not loop.last %},{% endif %}
+            {% endfor %}
+          ]
+        }{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ];
+      var COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
+
+      // union of all dates
+      var dateSet = {};
+      products.forEach(function(p) { p.snaps.forEach(function(s){ dateSet[s.date] = 1; }); });
+      var labels = Object.keys(dateSet).sort();
+
+      var datasets = products.map(function(p, i) {
+        var map = {};
+        p.snaps.forEach(function(s){ map[s.date] = s.count; });
+        return {
+          label: p.name,
+          data: labels.map(function(d){ return map[d] !== undefined ? map[d] : null; }),
+          borderColor: COLORS[i % COLORS.length],
+          backgroundColor: COLORS[i % COLORS.length] + '22',
+          tension: 0.4,
+          fill: false,
+          spanGaps: true,
+          pointRadius: 3,
+          borderWidth: 2,
+        };
+      });
+
+      if (typeof Chart !== 'undefined' && labels.length > 0) {
+        new Chart(document.getElementById('chart-canvas-{{ loop.index }}'), {
+          type: 'line',
+          data: { labels: labels, datasets: datasets },
+          options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    return ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toLocaleString() : '-');
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { ticks: { font: { size: 11 } } },
+              y: {
+                ticks: {
+                  font: { size: 11 },
+                  callback: function(v){ return v.toLocaleString(); }
+                }
+              }
+            }
+          }
+        });
+      }
+    })();
+    </script>
   </div>
   <div class="group-body" style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
     <table style="width:100%;border-collapse:collapse">
@@ -171,6 +249,15 @@ function deleteGroup(name) {
   }).then(function(r){ return r.json(); }).then(function(d){
     if (d.ok) location.reload();
   });
+}
+
+// ─────────────────────────────────────────────────────────
+// 그래프 토글
+// ─────────────────────────────────────────────────────────
+function toggleChart(idx) {
+  var el = document.getElementById('chart-section-' + idx);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 // ─────────────────────────────────────────────────────────
