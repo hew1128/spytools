@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 {% block content %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
 <div class="ph">
   <div>
     <h1>대시보드</h1>
@@ -13,15 +14,15 @@
 </div>
 
 <!-- 그룹 추가 폼 -->
-<div id="add-group-form" style="display:none;margin-bottom:12px;background:#f9fafb;border:1px solid #e5e7eb;
-     border-radius:8px;padding:12px 16px;display:flex;gap:8px;align-items:center">
+<div id="add-group-form" style="display:none;margin-bottom:12px;background:#f9fafb;
+     border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;
+     flex-direction:row;gap:8px;align-items:center">
   <input type="text" id="new-group-name" class="form-control"
          placeholder="새 그룹명 입력" style="width:200px;margin:0"
          onkeydown="if(event.key==='Enter')createGroup()">
   <button onclick="createGroup()" class="btn btn-primary btn-sm">만들기</button>
   <button onclick="hideAddGroupForm()" class="btn btn-secondary btn-sm">취소</button>
 </div>
-<div id="add-group-form-hidden" style="display:none;margin-bottom:12px"></div>
 
 {% if groups %}
 <p style="font-size:12px;color:#aaa;margin-bottom:8px">
@@ -31,6 +32,8 @@
 <div id="group-list">
 {% for gname, items in groups %}
 <div class="group-block" data-group="{{ gname }}" style="margin-bottom:12px">
+
+  <!-- 그룹 헤더 -->
   <div class="group-header" style="display:flex;align-items:center;gap:10px;
        background:#334155;border-radius:8px 8px 0 0;
        padding:11px 16px;cursor:grab;user-select:none" draggable="false">
@@ -54,78 +57,25 @@
                    cursor:pointer;flex-shrink:0"
             onmousedown="event.stopPropagation()">삭제</button>
   </div>
+
+  <!-- 추이 그래프 -->
   <div id="chart-section-{{ loop.index }}" style="display:none;border:1px solid #e5e7eb;
-       border-top:none;padding:16px;background:#fff">
-    <canvas id="chart-canvas-{{ loop.index }}" height="80"></canvas>
-    <script>
-    (function() {
-      var products = [
-        {% for item in items %}
-        {
-          name: {{ (item.product.memo or item.product.name) | tojson }},
-          snaps: [
-            {% for snap in item.chart_snaps %}
-            { date: {{ snap.date | tojson }}, count: {{ snap.count }} }{% if not loop.last %},{% endif %}
-            {% endfor %}
-          ]
-        }{% if not loop.last %},{% endif %}
-        {% endfor %}
-      ];
-      var COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
-
-      // union of all dates
-      var dateSet = {};
-      products.forEach(function(p) { p.snaps.forEach(function(s){ dateSet[s.date] = 1; }); });
-      var labels = Object.keys(dateSet).sort();
-
-      var datasets = products.map(function(p, i) {
-        var map = {};
-        p.snaps.forEach(function(s){ map[s.date] = s.count; });
-        return {
-          label: p.name,
-          data: labels.map(function(d){ return map[d] !== undefined ? map[d] : null; }),
-          borderColor: COLORS[i % COLORS.length],
-          backgroundColor: COLORS[i % COLORS.length] + '22',
-          tension: 0.4,
-          fill: false,
-          spanGaps: true,
-          pointRadius: 3,
-          borderWidth: 2,
-        };
-      });
-
-      if (typeof Chart !== 'undefined' && labels.length > 0) {
-        new Chart(document.getElementById('chart-canvas-{{ loop.index }}'), {
-          type: 'line',
-          data: { labels: labels, datasets: datasets },
-          options: {
-            responsive: true,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-              legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-              tooltip: {
-                callbacks: {
-                  label: function(ctx) {
-                    return ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toLocaleString() : '-');
-                  }
-                }
-              }
-            },
-            scales: {
-              x: { ticks: { font: { size: 11 } } },
-              y: {
-                ticks: {
-                  font: { size: 11 },
-                  callback: function(v){ return v.toLocaleString(); }
-                }
-              }
-            }
-          }
-        });
-      }
-    })();
-    </script>
+       border-top:none;padding:16px 20px;background:#fff">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:13px;color:#6b7280;font-weight:500">기간 설정:</span>
+      <input type="date" id="chart-start-{{ loop.index }}"
+             style="border:1px solid #d1d5db;border-radius:6px;padding:4px 10px;font-size:13px;color:#374151">
+      <span style="color:#9ca3af">~</span>
+      <input type="date" id="chart-end-{{ loop.index }}"
+             style="border:1px solid #d1d5db;border-radius:6px;padding:4px 10px;font-size:13px;color:#374151">
+      <button onclick="setRange({{ loop.index }}, 30)" class="btn btn-sm btn-secondary" style="font-size:12px;padding:3px 10px">30일</button>
+      <button onclick="setRange({{ loop.index }}, 90)" class="btn btn-sm btn-secondary" style="font-size:12px;padding:3px 10px">90일</button>
+      <button onclick="setRange({{ loop.index }}, 365)" class="btn btn-sm btn-secondary" style="font-size:12px;padding:3px 10px">전체</button>
+    </div>
+    <canvas id="chart-canvas-{{ loop.index }}" height="90"></canvas>
   </div>
+
+  <!-- 상품 테이블 -->
   <div class="group-body" style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden">
     <table style="width:100%;border-collapse:collapse">
       <thead>
@@ -215,13 +165,33 @@
 </div>
 {% endif %}
 
+<!-- ── 차트 데이터 (Jinja → JS) ── -->
+<script>
+var CHART_GROUPS = [
+{% for gname, items in groups %}
+{
+  idx: {{ loop.index }},
+  products: [
+    {% for item in items %}
+    {
+      name: {{ (item.product.memo or item.product.name) | tojson }},
+      snaps: [{% for snap in item.chart_snaps %}{ date: {{ snap.date | tojson }}, count: {{ snap.count }} }{% if not loop.last %},{% endif %}{% endfor %}]
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ]
+}{% if not loop.last %},{% endif %}
+{% endfor %}
+];
+</script>
+
+<!-- ── 차트 / 드래그 / UI 로직 ── -->
 <script>
 // ─────────────────────────────────────────────────────────
 // 그룹 추가 / 삭제
 // ─────────────────────────────────────────────────────────
 function showAddGroupForm() {
-  var form = document.getElementById('add-group-form');
-  form.style.display = 'flex';
+  var f = document.getElementById('add-group-form');
+  f.style.display = 'flex';
   document.getElementById('new-group-name').focus();
 }
 function hideAddGroupForm() {
@@ -232,8 +202,7 @@ function createGroup() {
   var name = document.getElementById('new-group-name').value.trim();
   if (!name) return;
   fetch('/group/create', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({name: name})
   }).then(function(r){ return r.json(); }).then(function(d){
     if (d.ok) location.reload();
@@ -241,23 +210,122 @@ function createGroup() {
   });
 }
 function deleteGroup(name) {
-  if (!confirm('"' + name + '" 그룹을 삭제하시겠습니까?\n(안에 있는 상품은 첫 번째 그룹으로 이동됩니다)')) return;
+  if (!confirm('"' + name + '" 그룹을 삭제하시겠습니까?\n(상품은 첫 번째 그룹으로 이동됩니다)')) return;
   fetch('/group/delete', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({name: name})
   }).then(function(r){ return r.json(); }).then(function(d){
     if (d.ok) location.reload();
+    else alert(d.error || '삭제 실패');
   });
 }
 
 // ─────────────────────────────────────────────────────────
-// 그래프 토글
+// 추이 그래프
 // ─────────────────────────────────────────────────────────
+var CHART_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
+var chartInstances = {};
+
+function buildChart(idx, products, start, end) {
+  var filtered = products.map(function(p) {
+    return {
+      name: p.name,
+      snaps: p.snaps.filter(function(s) {
+        return (!start || s.date >= start) && (!end || s.date <= end);
+      })
+    };
+  });
+  var dateSet = {};
+  filtered.forEach(function(p){ p.snaps.forEach(function(s){ dateSet[s.date] = 1; }); });
+  var labels = Object.keys(dateSet).sort();
+  var datasets = filtered.map(function(p, i) {
+    var map = {};
+    p.snaps.forEach(function(s){ map[s.date] = s.count; });
+    return {
+      label: p.name,
+      data: labels.map(function(d){ return map[d] !== undefined ? map[d] : null; }),
+      borderColor: CHART_COLORS[i % CHART_COLORS.length],
+      backgroundColor: CHART_COLORS[i % CHART_COLORS.length] + '18',
+      tension: 0.4, fill: false, spanGaps: true, pointRadius: 3, borderWidth: 2
+    };
+  });
+  var canvas = document.getElementById('chart-canvas-' + idx);
+  if (!canvas) return;
+  if (chartInstances[idx]) {
+    chartInstances[idx].data.labels = labels;
+    chartInstances[idx].data.datasets = datasets;
+    chartInstances[idx].update();
+  } else {
+    chartInstances[idx] = new Chart(canvas, {
+      type: 'line',
+      data: { labels: labels, datasets: datasets },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                return ctx.dataset.label + ': ' + (ctx.raw !== null ? ctx.raw.toLocaleString() : '-');
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { font: { size: 11 }, maxTicksLimit: 20 } },
+          y: { ticks: { font: { size: 11 }, callback: function(v){ return v.toLocaleString(); } } }
+        }
+      }
+    });
+  }
+}
+
+function getDateInputs(idx) {
+  var s = document.getElementById('chart-start-' + idx);
+  var e = document.getElementById('chart-end-' + idx);
+  return { start: s ? s.value : '', end: e ? e.value : '' };
+}
+
+function setRange(idx, days) {
+  var endDate = new Date();
+  var startDate = new Date();
+  startDate.setDate(startDate.getDate() - days + 1);
+  var startEl = document.getElementById('chart-start-' + idx);
+  var endEl   = document.getElementById('chart-end-' + idx);
+  if (startEl) startEl.value = startDate.toISOString().slice(0, 10);
+  if (endEl)   endEl.value   = endDate.toISOString().slice(0, 10);
+  var g = CHART_GROUPS.find(function(x){ return x.idx === idx; });
+  if (g) buildChart(idx, g.products, startEl ? startEl.value : '', endEl ? endEl.value : '');
+}
+
+// 날짜 기본값 설정 + change 이벤트 연결
+CHART_GROUPS.forEach(function(g) {
+  var today  = new Date().toISOString().slice(0, 10);
+  var d30    = new Date(); d30.setDate(d30.getDate() - 29);
+  var start30 = d30.toISOString().slice(0, 10);
+  var startEl = document.getElementById('chart-start-' + g.idx);
+  var endEl   = document.getElementById('chart-end-' + g.idx);
+  if (startEl) startEl.value = start30;
+  if (endEl)   endEl.value   = today;
+  function refresh() {
+    var d = getDateInputs(g.idx);
+    buildChart(g.idx, g.products, d.start, d.end);
+  }
+  if (startEl) startEl.addEventListener('change', refresh);
+  if (endEl)   endEl.addEventListener('change', refresh);
+  g._refresh = refresh;
+});
+
 function toggleChart(idx) {
   var el = document.getElementById('chart-section-' + idx);
   if (!el) return;
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  var opening = el.style.display === 'none' || el.style.display === '';
+  el.style.display = opening ? 'block' : 'none';
+  if (opening) {
+    var g = CHART_GROUPS.find(function(x){ return x.idx === idx; });
+    if (g && g._refresh) g._refresh();
+  }
 }
 
 // ─────────────────────────────────────────────────────────
@@ -293,197 +361,111 @@ function collectOne(pid, btn) {
 // 드래그 앤 드롭
 // ─────────────────────────────────────────────────────────
 (function() {
-  var dragging = null;
-  var placeholder = null;
-  var dragType = null;
+  var dragging = null, placeholder = null;
 
-  // ── 그룹 드래그 ────────────────────────────────────────
+  // 그룹 드래그
   document.querySelectorAll('.group-header').forEach(function(hdr) {
     hdr.addEventListener('mousedown', function(e) {
       if (e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
       e.preventDefault();
       var blk = hdr.closest('.group-block');
       var rect = blk.getBoundingClientRect();
-      dragType = 'group';
       dragging = blk;
-
-      // placeholder
       placeholder = document.createElement('div');
       placeholder.style.cssText = 'height:' + rect.height + 'px;background:#ede9fe;border-radius:8px;margin-bottom:12px;opacity:.5';
       blk.parentNode.insertBefore(placeholder, blk.nextSibling);
-
-      // float
       blk.style.cssText = (blk.getAttribute('style') || '') +
         ';position:fixed;z-index:9999;width:' + rect.width + 'px' +
-        ';top:' + rect.top + 'px;left:' + rect.left + 'px' +
-        ';opacity:.88;box-shadow:0 8px 24px rgba(0,0,0,.2)';
+        ';top:' + rect.top + 'px;left:' + rect.left + 'px;opacity:.88;box-shadow:0 8px 24px rgba(0,0,0,.2)';
       document.body.style.cursor = 'grabbing';
-
       var startY = e.clientY, startTop = rect.top;
-
       function onMove(ev) {
-        var dy = ev.clientY - startY;
-        dragging.style.top = (startTop + dy) + 'px';
-        var midY = startTop + dy + rect.height / 2;
-
-        var siblings = Array.from(document.querySelectorAll('#group-list > .group-block'))
-          .filter(function(x){ return x !== dragging; });
+        dragging.style.top = (startTop + ev.clientY - startY) + 'px';
+        var midY = startTop + ev.clientY - startY + rect.height / 2;
+        var siblings = Array.from(document.querySelectorAll('#group-list > .group-block')).filter(function(x){ return x !== dragging; });
         for (var i = 0; i < siblings.length; i++) {
-          var sr = siblings[i].getBoundingClientRect();
-          if (midY < sr.top + sr.height / 2) {
-            siblings[i].parentNode.insertBefore(placeholder, siblings[i]);
-            return;
+          if (midY < siblings[i].getBoundingClientRect().top + siblings[i].getBoundingClientRect().height / 2) {
+            siblings[i].parentNode.insertBefore(placeholder, siblings[i]); return;
           }
         }
-        if (siblings.length) {
-          var last = siblings[siblings.length - 1];
-          last.parentNode.insertBefore(placeholder, last.nextSibling);
-        }
+        if (siblings.length) siblings[siblings.length-1].parentNode.insertBefore(placeholder, siblings[siblings.length-1].nextSibling);
       }
-
       function onUp() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-        blk.style.position = blk.style.zIndex = blk.style.width = '';
-        blk.style.top = blk.style.left = blk.style.opacity = blk.style.boxShadow = '';
+        blk.style.position = blk.style.zIndex = blk.style.width = blk.style.top = blk.style.left = blk.style.opacity = blk.style.boxShadow = '';
         document.body.style.cursor = '';
         placeholder.parentNode.insertBefore(blk, placeholder);
-        placeholder.remove();
-        placeholder = null;
-        dragging = null;
-        saveGroupOrder();
+        placeholder.remove(); placeholder = null; dragging = null;
+        var order = Array.from(document.querySelectorAll('#group-list > .group-block')).map(function(b){ return b.dataset.group; });
+        fetch('/group-order', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(order) });
       }
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
   });
 
-  // ── 상품 드래그 (그룹 간 이동 지원) ──────────────────────
+  // 상품 드래그 (그룹 간 이동)
   document.querySelectorAll('.prod-drag-icon').forEach(function(icon) {
     icon.addEventListener('mousedown', function(e) {
       e.preventDefault();
       var row = icon.closest('.product-row');
       var origGroup = row.closest('.product-list').dataset.group;
       var rect = row.getBoundingClientRect();
-      dragType = 'product';
       dragging = row;
-
       placeholder = document.createElement('tr');
       placeholder.innerHTML = '<td colspan="9" style="padding:0;height:' + rect.height + 'px;background:#ede9fe"></td>';
       row.parentNode.insertBefore(placeholder, row.nextSibling);
-
-      // 행을 fixed로 띄움
-      var origDisplay = getComputedStyle(row).display;
-      row.style.cssText = [
-        'position:fixed', 'z-index:9999',
-        'top:' + rect.top + 'px', 'left:' + rect.left + 'px',
-        'width:' + rect.width + 'px', 'opacity:.9',
-        'background:#fff', 'box-shadow:0 4px 18px rgba(0,0,0,.18)',
-        'display:table'
-      ].join(';');
+      row.style.cssText = 'position:fixed;z-index:9999;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;opacity:.9;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.18);display:table';
       document.body.style.cursor = 'grabbing';
-
       var startY = e.clientY, startTop = rect.top;
-
-      function findTargetTbody(clientY) {
+      function findTbody(clientY) {
         var blocks = document.querySelectorAll('.group-block');
         for (var i = 0; i < blocks.length; i++) {
-          var b = blocks[i];
-          // expanded group body
-          var body = b.querySelector('.group-body');
+          var body = blocks[i].querySelector('.group-body');
           if (body && body.style.display === 'none') continue;
-          var bRect = b.getBoundingClientRect();
-          if (clientY >= bRect.top && clientY <= bRect.bottom) {
-            return b.querySelector('.product-list');
-          }
+          var br = blocks[i].getBoundingClientRect();
+          if (clientY >= br.top && clientY <= br.bottom) return blocks[i].querySelector('.product-list');
         }
         return null;
       }
-
       function onMove(ev) {
-        var dy = ev.clientY - startY;
-        dragging.style.top = (startTop + dy) + 'px';
-        var midY = startTop + dy + rect.height / 2;
-
-        var tb = findTargetTbody(ev.clientY);
+        dragging.style.top = (startTop + ev.clientY - startY) + 'px';
+        var midY = startTop + ev.clientY - startY + rect.height / 2;
+        var tb = findTbody(ev.clientY);
         if (!tb) return;
-
-        var siblings = Array.from(tb.querySelectorAll('.product-row'))
-          .filter(function(x){ return x !== dragging; });
+        var siblings = Array.from(tb.querySelectorAll('.product-row')).filter(function(x){ return x !== dragging; });
         var placed = false;
         for (var i = 0; i < siblings.length; i++) {
           var sr = siblings[i].getBoundingClientRect();
-          if (midY < sr.top + sr.height / 2) {
-            tb.insertBefore(placeholder, siblings[i]);
-            placed = true;
-            break;
-          }
+          if (midY < sr.top + sr.height / 2) { tb.insertBefore(placeholder, siblings[i]); placed = true; break; }
         }
         if (!placed) tb.appendChild(placeholder);
       }
-
       function onUp() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
-
-        var targetTbody = placeholder.parentNode;
-        var newGroup = targetTbody ? targetTbody.dataset.group : origGroup;
-
+        var tb = placeholder.parentNode;
+        var newGroup = tb ? tb.dataset.group : origGroup;
         row.style.cssText = '';
         document.body.style.cursor = '';
-
-        if (targetTbody) {
-          targetTbody.insertBefore(row, placeholder);
-        }
-        placeholder.remove();
-        placeholder = null;
-        dragging = null;
-
+        if (tb) tb.insertBefore(row, placeholder);
+        placeholder.remove(); placeholder = null; dragging = null;
         if (newGroup && newGroup !== origGroup) {
-          fetch('/product/' + row.dataset.pid + '/group', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({group: newGroup})
+          fetch('/product/' + row.dataset.pid + '/group', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({group: newGroup}) });
+          document.querySelectorAll('.group-block').forEach(function(blk) {
+            var n = blk.querySelectorAll('.product-row').length;
+            var badge = blk.querySelector('.group-count');
+            if (badge) badge.textContent = n + '개';
           });
-          updateGroupCounts();
         }
-        saveProductOrder();
+        var order = Array.from(document.querySelectorAll('.product-row')).map(function(r){ return parseInt(r.dataset.pid); });
+        fetch('/product-order', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(order) });
       }
-
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
   });
-
-  // ── 순서 저장 ─────────────────────────────────────────────
-  function saveGroupOrder() {
-    var order = Array.from(document.querySelectorAll('#group-list > .group-block'))
-      .map(function(b){ return b.dataset.group; });
-    fetch('/group-order', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(order)
-    });
-  }
-
-  function saveProductOrder() {
-    var order = Array.from(document.querySelectorAll('.product-row'))
-      .map(function(r){ return parseInt(r.dataset.pid); });
-    fetch('/product-order', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(order)
-    });
-  }
-
-  function updateGroupCounts() {
-    document.querySelectorAll('.group-block').forEach(function(blk) {
-      var n = blk.querySelectorAll('.product-row').length;
-      var badge = blk.querySelector('.group-count');
-      if (badge) badge.textContent = n + '개';
-    });
-  }
 })();
 </script>
 {% endblock %}
