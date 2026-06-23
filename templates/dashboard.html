@@ -73,6 +73,9 @@
         <div style="display:flex;gap:4px;justify-content:flex-end">
           <button onclick="collectOne({{ p.id }}, this)" class="btn btn-success btn-sm">수집</button>
           <a href="/product/{{ p.id }}" class="btn btn-secondary btn-sm">추이</a>
+          <form method="POST" action="/product/{{ p.id }}/delete" onsubmit="return confirm('삭제하시겠습니까?')" style="margin:0">
+            <button type="submit" class="btn btn-sm" style="background:#fee2e2;color:#dc2626">삭제</button>
+          </form>
         </div>
       </td>
     </tr>
