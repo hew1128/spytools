@@ -26,7 +26,7 @@
 {% if rows %}
 {# ── 요약 ── #}
 {% set latest = rows[0].snap %}
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
   <div class="card" style="margin:0;text-align:center;padding:18px">
     <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">현재 리뷰 수</div>
     <div style="font-size:26px;font-weight:800">
@@ -51,6 +51,32 @@
     <div style="font-size:22px;font-weight:800">{{ rows|length }}일</div>
   </div>
 </div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">구매수</div>
+    <div style="font-size:22px;font-weight:800">
+      {% if latest.purchase_count is not none %}{{ '{:,}'.format(latest.purchase_count) }}{% else %}-{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">찜수</div>
+    <div style="font-size:22px;font-weight:800">
+      {% if latest.wishlist_count is not none %}{{ '{:,}'.format(latest.wishlist_count) }}{% else %}-{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">유기 순위</div>
+    <div style="font-size:22px;font-weight:800">
+      {% if latest.organic_rank is not none %}{{ latest.organic_rank }}위{% else %}-{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0;text-align:center;padding:18px">
+    <div style="font-size:12px;color:#9ca3af;margin-bottom:4px">등록일</div>
+    <div style="font-size:18px;font-weight:800">
+      {{ product.registered_date or '-' }}
+    </div>
+  </div>
+</div>
 
 {# ── 이력 테이블 ── #}
 <div class="card" style="padding:0;overflow:hidden">
@@ -59,9 +85,11 @@
       <tr>
         <th>날짜</th>
         <th class="tr">리뷰 수</th>
-        <th class="tr">리뷰 증가 (추정 판매)</th>
+        <th class="tr">리뷰 증가</th>
+        <th class="tr">구매수</th>
+        <th class="tr">찜수</th>
+        <th class="tr">유기순위</th>
         <th class="tr">가격</th>
-        <th class="tr">가격 변동</th>
         <th class="tc">평점</th>
         <th class="tc">상태</th>
       </tr>
@@ -86,14 +114,16 @@
         {% else %}<span class="gray">-</span>{% endif %}
       </td>
       <td class="tr">
-        {% if s.price is not none %}{{ '{:,}'.format(s.price) }}원{% else %}-{% endif %}
+        {% if s.purchase_count is not none %}{{ '{:,}'.format(s.purchase_count) }}{% else %}<span class="gray">-</span>{% endif %}
       </td>
       <td class="tr">
-        {% if row.price_diff is not none and row.price_diff != 0 %}
-          <span class="{{ 'dn' if row.price_diff > 0 else 'up' }}">
-            {{ '+' if row.price_diff > 0 else '' }}{{ '{:,}'.format(row.price_diff) }}원
-          </span>
-        {% else %}<span class="gray">-</span>{% endif %}
+        {% if s.wishlist_count is not none %}{{ '{:,}'.format(s.wishlist_count) }}{% else %}<span class="gray">-</span>{% endif %}
+      </td>
+      <td class="tr">
+        {% if s.organic_rank is not none %}{{ s.organic_rank }}위{% else %}<span class="gray">-</span>{% endif %}
+      </td>
+      <td class="tr">
+        {% if s.price is not none %}{{ '{:,}'.format(s.price) }}원{% else %}-{% endif %}
       </td>
       <td class="tc">
         {% if s.rating is not none %}⭐ {{ '%.1f'|format(s.rating) }}{% else %}-{% endif %}

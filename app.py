@@ -42,10 +42,21 @@ def init_db():
         review_count INTEGER,
         rating REAL,
         price INTEGER,
+        purchase_count INTEGER,
+        wishlist_count INTEGER,
         error TEXT,
         collected_at TEXT NOT NULL,
         FOREIGN KEY (product_id) REFERENCES products(id)
     )''')
+    for col_def in ['purchase_count INTEGER', 'wishlist_count INTEGER', 'organic_rank INTEGER']:
+        try:
+            c.execute(f"ALTER TABLE snapshots ADD COLUMN {col_def}")
+        except Exception:
+            pass
+    try:
+        c.execute("ALTER TABLE products ADD COLUMN registered_date TEXT")
+    except Exception:
+        pass
     c.execute('''CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT
@@ -209,19 +220,25 @@ def do_collect(pid, conn):
         return
     today = today_kst()
     result = scrape_product(product)
+    # 등록일은 products 테이블에 저장 (한 번만)
+    if result.get('registered_date') and not product['registered_date']:
+        conn.execute("UPDATE products SET registered_date=? WHERE id=?",
+                     (result['registered_date'], pid))
     existing = conn.execute(
         "SELECT id FROM snapshots WHERE product_id=? AND collected_at=?", (pid, today)
     ).fetchone()
     if existing:
         conn.execute(
-            "UPDATE snapshots SET review_count=?,rating=?,price=?,error=? WHERE product_id=? AND collected_at=?",
+            "UPDATE snapshots SET review_count=?,rating=?,price=?,purchase_count=?,wishlist_count=?,error=? WHERE product_id=? AND collected_at=?",
             (result.get('review_count'), result.get('rating'), result.get('price'),
+             result.get('purchase_count'), result.get('wishlist_count'),
              result.get('error'), pid, today)
         )
     else:
         conn.execute(
-            "INSERT INTO snapshots (product_id,review_count,rating,price,error,collected_at) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO snapshots (product_id,review_count,rating,price,purchase_count,wishlist_count,error,collected_at) VALUES (?,?,?,?,?,?,?,?)",
             (pid, result.get('review_count'), result.get('rating'), result.get('price'),
+             result.get('purchase_count'), result.get('wishlist_count'),
              result.get('error'), today)
         )
     conn.commit()
@@ -497,26 +514,35 @@ def api_push():
     conn = get_db()
     count = 0
     for item in data:
-        pid          = item.get('product_id')
-        review_count = item.get('review_count')
-        rating       = item.get('rating')
-        price        = item.get('price')
-        error        = item.get('error')
-        today        = item.get('date') or today_kst()  # 로컬 날짜 우선, 없으면 KST
+        pid            = item.get('product_id')
+        review_count   = item.get('review_count')
+        rating         = item.get('rating')
+        price          = item.get('price')
+        purchase_count = item.get('purchase_count')
+        wishlist_count = item.get('wishlist_count')
+        organic_rank   = item.get('organic_rank')
+        registered_date= item.get('registered_date')
+        error          = item.get('error')
+        today          = item.get('date') or today_kst()
         if not pid:
             continue
+        # 등록일은 products 테이블에 한 번만 저장
+        if registered_date:
+            p = conn.execute("SELECT registered_date FROM products WHERE id=?", (pid,)).fetchone()
+            if p and not p['registered_date']:
+                conn.execute("UPDATE products SET registered_date=? WHERE id=?", (registered_date, pid))
         existing = conn.execute(
             "SELECT id FROM snapshots WHERE product_id=? AND collected_at=?", (pid, today)
         ).fetchone()
         if existing:
             conn.execute(
-                "UPDATE snapshots SET review_count=?,rating=?,price=?,error=? WHERE product_id=? AND collected_at=?",
-                (review_count, rating, price, error, pid, today)
+                "UPDATE snapshots SET review_count=?,rating=?,price=?,purchase_count=?,wishlist_count=?,organic_rank=?,error=? WHERE product_id=? AND collected_at=?",
+                (review_count, rating, price, purchase_count, wishlist_count, organic_rank, error, pid, today)
             )
         else:
             conn.execute(
-                "INSERT INTO snapshots (product_id,review_count,rating,price,error,collected_at) VALUES (?,?,?,?,?,?)",
-                (pid, review_count, rating, price, error, today)
+                "INSERT INTO snapshots (product_id,review_count,rating,price,purchase_count,wishlist_count,organic_rank,error,collected_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (pid, review_count, rating, price, purchase_count, wishlist_count, organic_rank, error, today)
             )
         count += 1
     conn.commit()

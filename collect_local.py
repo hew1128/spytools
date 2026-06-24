@@ -9,6 +9,7 @@ import re
 import json
 import time
 import os
+import urllib.parse
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
@@ -48,6 +49,91 @@ def naver_login(page, naver_id, naver_pw):
             return True
     print('  로그인 시간 초과. 계속 진행합니다.')
     return False
+
+
+def parse_korean_number(text):
+    """'1.5만' → 15000, '6,690' → 6690"""
+    if not text:
+        return None
+    text = text.strip().replace(',', '')
+    m = re.search(r'([\d.]+)(만|천)?', text)
+    if not m:
+        return None
+    num = float(m.group(1))
+    if m.group(2) == '만':
+        num *= 10000
+    elif m.group(2) == '천':
+        num *= 1000
+    return int(num)
+
+
+def search_naver_shopping(product_name, store_hint, page):
+    """네이버 쇼핑 검색 후 일반(비광고) 카드에서 구매수/찜수/등록일/유기순위 수집"""
+    result = {'purchase_count': None, 'wishlist_count': None,
+              'registered_date': None, 'organic_rank': None}
+    if not store_hint or not store_hint.strip():
+        return result
+    try:
+        query = urllib.parse.quote(product_name)
+        page.goto(
+            f'https://search.shopping.naver.com/search/all?query={query}',
+            wait_until='domcontentloaded', timeout=30000
+        )
+        page.wait_for_timeout(2000)
+
+        hint = store_hint.strip().lower()
+        data = page.evaluate(f'''() => {{
+            const hint = {json.dumps(hint)};
+            // 광고 제외 — 일반 카드만 (product_item__K0ayS)
+            const cards = document.querySelectorAll('div.product_item__K0ayS');
+            for (const card of cards) {{
+                const cardText = card.innerText.toLowerCase();
+                if (!cardText.includes(hint)) continue;
+
+                // 구매수
+                let purchase = null;
+                const purchaseEl = card.querySelector('[data-shp-area*="purchasecount"] .product_num__WuH26, [data-shp-area*="purchasecount"] em');
+                if (purchaseEl) purchase = purchaseEl.innerText.trim();
+
+                // 찜수 / 등록일: span.product_etc__Z7jnS 중 텍스트로 구분
+                let wish = null, regDate = null;
+                const etcSpans = card.querySelectorAll('[class*="product_etc__"]');
+                for (const sp of etcSpans) {{
+                    const t = sp.innerText.trim();
+                    if (t.startsWith('찜')) {{
+                        const numEl = sp.querySelector('[class*="product_num__"]');
+                        if (numEl) wish = numEl.innerText.trim();
+                    }} else if (t.startsWith('등록일')) {{
+                        const m = t.match(/(\d{{4}}\.\d{{1,2}}\.?)/);
+                        if (m) regDate = m[1].replace(/\.$/, '');
+                    }}
+                }}
+
+                // 유기 순위: data-shp-contents-dt 속성에서 organic_expose_order
+                let organicRank = null;
+                const rankEl = card.querySelector('[data-shp-contents-dt]');
+                if (rankEl) {{
+                    try {{
+                        const dt = JSON.parse(rankEl.getAttribute('data-shp-contents-dt') || '[]');
+                        const oe = dt.find(x => x.key === 'organic_expose_order');
+                        if (oe) organicRank = parseInt(oe.value);
+                    }} catch(e) {{}}
+                }}
+
+                return {{ purchase, wish, regDate, organicRank }};
+            }}
+            return null;
+        }}''')
+
+        if data:
+            result['purchase_count'] = parse_korean_number(data.get('purchase'))
+            result['wishlist_count']  = parse_korean_number(data.get('wish'))
+            result['registered_date'] = data.get('regDate')
+            if data.get('organicRank') is not None:
+                result['organic_rank'] = data['organicRank']
+    except Exception as e:
+        print(f'    쇼핑 검색 오류: {str(e)[:80]}')
+    return result
 
 
 def scrape_naver(url, page):
@@ -177,16 +263,27 @@ def main():
 
             if platform == 'naver':
                 r = scrape_naver(url, page)
+                # 네이버 쇼핑 검색으로 구매수/찜수/등록일/유기순위 추가 수집
+                memo = prod.get('memo', '') or ''
+                if memo.strip():
+                    print(f'    쇼핑 검색 중 (힌트: {memo[:20]})...')
+                    shopping = search_naver_shopping(prod['name'], memo, page)
+                    r.update({k: v for k, v in shopping.items() if v is not None})
             elif platform == 'coupang':
                 r = scrape_coupang(url, page)
             else:
                 r = {'review_count': None, 'rating': None, 'price': None, 'error': f'지원안함:{platform}'}
 
             r['product_id'] = pid
-            r['date'] = datetime.now().strftime('%Y-%m-%d')  # 로컬 PC 날짜(KST) 사용
+            r['date'] = datetime.now().strftime('%Y-%m-%d')
             results.append(r)
-            status = f"리뷰:{r['review_count']} 가격:{r['price']}" if r['review_count'] is not None else f"오류:{r.get('error','?')}"
-            print(f'    → {status}')
+            parts = []
+            if r.get('review_count') is not None: parts.append(f"리뷰:{r['review_count']}")
+            if r.get('purchase_count') is not None: parts.append(f"구매:{r['purchase_count']}")
+            if r.get('wishlist_count') is not None: parts.append(f"찜:{r['wishlist_count']}")
+            if r.get('organic_rank') is not None: parts.append(f"유기순위:{r['organic_rank']}")
+            if r.get('error'): parts.append(f"오류:{r['error'][:30]}")
+            print(f'    → {" | ".join(parts) if parts else "데이터없음"}')
             time.sleep(1)
 
         context.close()
