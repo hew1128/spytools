@@ -501,7 +501,7 @@ def delete_product(pid):
 @app.route('/api/products', methods=['GET'])
 def api_products():
     conn = get_db()
-    rows = conn.execute("SELECT id, name, url, platform FROM products WHERE is_active=1").fetchall()
+    rows = conn.execute("SELECT id, name, url, platform, memo FROM products WHERE is_active=1").fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
