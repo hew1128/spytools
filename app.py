@@ -1,8 +1,13 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import sqlite3, json, re, os, time, random
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 import requests
 from bs4 import BeautifulSoup
+
+KST = timezone(timedelta(hours=9))
+
+def today_kst():
+    return datetime.now(KST).strftime('%Y-%m-%d')
 
 app = Flask(__name__)
 app.secret_key = 'spykey2024'
@@ -202,7 +207,7 @@ def do_collect(pid, conn):
     product = conn.execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
     if not product:
         return
-    today = date.today().isoformat()
+    today = today_kst()
     result = scrape_product(product)
     existing = conn.execute(
         "SELECT id FROM snapshots WHERE product_id=? AND collected_at=?", (pid, today)
@@ -230,7 +235,7 @@ try:
     def scheduled_collect():
         conn = get_db()
         products = conn.execute("SELECT * FROM products WHERE is_active=1").fetchall()
-        today = date.today().isoformat()
+        today = today_kst()
         for p in products:
             ex = conn.execute(
                 "SELECT id FROM snapshots WHERE product_id=? AND collected_at=?",
@@ -490,7 +495,6 @@ def api_push():
     if not data or not isinstance(data, list):
         return jsonify({'ok': False, 'error': 'invalid data'}), 400
     conn = get_db()
-    today = date.today().isoformat()
     count = 0
     for item in data:
         pid          = item.get('product_id')
@@ -498,6 +502,7 @@ def api_push():
         rating       = item.get('rating')
         price        = item.get('price')
         error        = item.get('error')
+        today        = item.get('date') or today_kst()  # 로컬 날짜 우선, 없으면 KST
         if not pid:
             continue
         existing = conn.execute(

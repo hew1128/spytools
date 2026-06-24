@@ -9,6 +9,7 @@ import re
 import json
 import time
 import os
+from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
@@ -26,52 +27,60 @@ def load_setting():
 def naver_login(page, naver_id, naver_pw):
     print('  네이버 로그인 중...')
     page.goto('https://nid.naver.com/nidlogin.login', wait_until='domcontentloaded', timeout=20000)
-    page.wait_for_timeout(1000)
-    page.fill('#id', naver_id)
+    page.wait_for_timeout(1500)
+    page.click('#id')
+    page.keyboard.type(naver_id, delay=80)
     page.wait_for_timeout(500)
-    page.fill('#pw', naver_pw)
+    page.click('#pw')
+    page.keyboard.type(naver_pw, delay=80)
     page.wait_for_timeout(500)
     page.click('.btn_login')
     page.wait_for_timeout(3000)
-    # 로그인 성공 확인
-    if 'naver.com' in page.url and 'nidlogin' not in page.url:
+    if 'nidlogin' not in page.url:
         print('  로그인 성공!')
         return True
-    print('  로그인 실패 또는 2차 인증 필요. 직접 로그인 후 Enter 누르세요...')
-    input()
-    return True
+    # 캡챠 등 추가 인증 - 브라우저 창에서 직접 로그인 완료 기다림 (최대 120초)
+    print('  [브라우저 창에서 로그인 완료해주세요] 자동으로 감지합니다...')
+    for _ in range(60):
+        page.wait_for_timeout(2000)
+        if 'nidlogin' not in page.url and 'naver.com' in page.url:
+            print('  로그인 성공!')
+            return True
+    print('  로그인 시간 초과. 계속 진행합니다.')
+    return False
 
 
 def scrape_naver(url, page):
     try:
-        page.goto(url, wait_until='networkidle', timeout=30000)
-        page.wait_for_timeout(2000)
-        content = page.content()
-        soup = BeautifulSoup(content, 'html.parser')
+        page.goto(url, wait_until='domcontentloaded', timeout=60000)
         result = {'review_count': None, 'rating': None, 'price': None, 'error': None}
 
-        next_script = soup.find('script', {'id': '__NEXT_DATA__'})
-        if not next_script or not next_script.string:
-            title = soup.find('title')
-            result['error'] = f'NO_NEXT_DATA (title={title.text[:40] if title else "없음"})'
-            return result
-
-        s = next_script.string
-        m = re.search(r'"reviewCount"\s*:\s*(\d+)', s)
-        if m: result['review_count'] = int(m.group(1))
-        m = re.search(r'"averageRating"\s*:\s*([\d.]+)', s)
-        if m: result['rating'] = float(m.group(1))
-        for pat in [r'"salePrice"\s*:\s*(\d{3,7})', r'"discountedSalePrice"\s*:\s*(\d{3,7})']:
-            m = re.search(pat, s)
+        # 리뷰 수: "38,988건 리뷰" 형태
+        try:
+            el = page.wait_for_selector('[data-shp-area="sprvsub.rvmore"]', timeout=8000)
+            text = el.inner_text()
+            m = re.search(r'[\d,]+', text)
             if m:
-                result['price'] = int(m.group(1))
-                break
-        if result['review_count'] is None:
-            for pat in [r'"totalReviewCount"\s*:\s*(\d+)', r'"reviewTotalCount"\s*:\s*(\d+)']:
-                m = re.search(pat, s)
-                if m:
-                    result['review_count'] = int(m.group(1))
-                    break
+                result['review_count'] = int(m.group().replace(',', ''))
+        except Exception:
+            pass
+
+        # 가격: 네이버 스마트스토어 공통 패턴
+        for sel in ['[class*="price"] strong', '[class*="salePrice"]',
+                    'span[class*="price"] em', 'strong[class*="price"]']:
+            try:
+                el = page.query_selector(sel)
+                if el:
+                    text = el.inner_text().replace(',', '').strip()
+                    m = re.search(r'\d{3,7}', text)
+                    if m:
+                        result['price'] = int(m.group())
+                        break
+            except Exception:
+                pass
+
+        if result['review_count'] is None and result['price'] is None:
+            result['error'] = '데이터 없음 (페이지 구조 변경 가능성)'
         return result
     except Exception as e:
         return {'review_count': None, 'rating': None, 'price': None, 'error': str(e)[:200]}
@@ -79,8 +88,8 @@ def scrape_naver(url, page):
 
 def scrape_coupang(url, page):
     try:
-        page.goto(url, wait_until='networkidle', timeout=30000)
-        page.wait_for_timeout(2000)
+        page.goto(url, wait_until='domcontentloaded', timeout=60000)
+        page.wait_for_timeout(3000)
         content = page.content()
         soup = BeautifulSoup(content, 'html.parser')
         result = {'review_count': None, 'rating': None, 'price': None, 'error': None}
@@ -135,15 +144,29 @@ def main():
 
     print(f'상품 {len(products)}개 수집 시작...\n')
 
+    # 수집기와 동일하게 별도 세션 폴더 사용 (Chrome 안 닫아도 됨)
+    SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'naver_session')
+    os.makedirs(SESSION_DIR, exist_ok=True)
+
     results = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        page = browser.new_page(user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36', locale='ko-KR')
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=SESSION_DIR,
+            headless=False,
+            no_viewport=True,
+            args=['--disable-blink-features=AutomationControlled'],
+        )
+        page = context.new_page()
 
-        # 네이버 상품이 있으면 로그인
-        has_naver = any(p['platform'] == 'naver' for p in products)
-        if has_naver and naver_id:
-            naver_login(page, naver_id, naver_pw)
+        # 세션 없으면 로그인 (첫 실행 시 1회만)
+        has_naver = any(prod['platform'] == 'naver' for prod in products)
+        if has_naver:
+            page.goto('https://www.naver.com', wait_until='domcontentloaded', timeout=15000)
+            page.wait_for_timeout(1000)
+            if 'naver.com' in page.url and page.query_selector('input#id') is None:
+                print('  세션 유지 중 (로그인 생략)')
+            elif naver_id:
+                naver_login(page, naver_id, naver_pw)
 
         for prod in products:
             pid      = prod['id']
@@ -160,12 +183,13 @@ def main():
                 r = {'review_count': None, 'rating': None, 'price': None, 'error': f'지원안함:{platform}'}
 
             r['product_id'] = pid
+            r['date'] = datetime.now().strftime('%Y-%m-%d')  # 로컬 PC 날짜(KST) 사용
             results.append(r)
             status = f"리뷰:{r['review_count']} 가격:{r['price']}" if r['review_count'] is not None else f"오류:{r.get('error','?')}"
             print(f'    → {status}')
             time.sleep(1)
 
-        browser.close()
+        context.close()
 
     # 서버로 전송
     print(f'\n서버에 결과 전송 중...')
