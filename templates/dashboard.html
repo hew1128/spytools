@@ -84,8 +84,10 @@
           <th style="padding:6px 12px;text-align:left">상품명</th>
           <th style="padding:6px 8px;text-align:center;width:70px">플랫폼</th>
           <th style="padding:6px 8px;text-align:right;width:90px">현재 리뷰</th>
-          <th style="padding:6px 8px;text-align:right;width:80px">전일 대비</th>
-          <th style="padding:6px 8px;text-align:right;width:90px">현재 가격</th>
+          <th style="padding:6px 8px;text-align:right;width:70px">전일 대비</th>
+          <th style="padding:6px 8px;text-align:right;width:80px">구매수</th>
+          <th style="padding:6px 8px;text-align:right;width:70px">찜수</th>
+          <th style="padding:6px 8px;text-align:center;width:60px">유기순위</th>
           <th style="padding:6px 8px;text-align:center;width:90px">마지막 수집</th>
           <th style="padding:6px 8px;text-align:center;width:56px">상태</th>
           <th style="padding:6px 12px;text-align:right;width:160px"></th>
@@ -120,8 +122,14 @@
             {% else %}<span class="gray">-</span>{% endif %}
           {% else %}<span class="gray">-</span>{% endif %}
         </td>
-        <td style="padding:10px 8px;text-align:right">
-          {% if s and s.price is not none %}{{ '{:,}'.format(s.price) }}원{% else %}-{% endif %}
+        <td style="padding:10px 8px;text-align:right;font-size:13px">
+          {% if s and s.purchase_count is not none %}{{ '{:,}'.format(s.purchase_count) }}{% else %}<span class="gray">-</span>{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:right;font-size:13px">
+          {% if s and s.wishlist_count is not none %}{{ '{:,}'.format(s.wishlist_count) }}{% else %}<span class="gray">-</span>{% endif %}
+        </td>
+        <td style="padding:10px 8px;text-align:center;font-size:13px">
+          {% if s and s.organic_rank is not none %}{{ s.organic_rank }}위{% else %}<span class="gray">-</span>{% endif %}
         </td>
         <td style="padding:10px 8px;text-align:center;color:#9ca3af;font-size:12px">
           {% if s %}{{ s.collected_at }}{% else %}-{% endif %}
@@ -414,7 +422,7 @@ function collectOne(pid, btn) {
       var rect = row.getBoundingClientRect();
       dragging = row;
       placeholder = document.createElement('tr');
-      placeholder.innerHTML = '<td colspan="9" style="padding:0;height:' + rect.height + 'px;background:#ede9fe"></td>';
+      placeholder.innerHTML = '<td colspan="12" style="padding:0;height:' + rect.height + 'px;background:#ede9fe"></td>';
       row.parentNode.insertBefore(placeholder, row.nextSibling);
       row.style.cssText = 'position:fixed;z-index:9999;top:' + rect.top + 'px;left:' + rect.left + 'px;width:' + rect.width + 'px;opacity:.9;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.18);display:table';
       document.body.style.cursor = 'grabbing';
