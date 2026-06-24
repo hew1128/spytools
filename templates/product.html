@@ -4,6 +4,9 @@
   <div>
     <a href="/" style="font-size:13px;color:#6b7280">← 대시보드</a>
     <h1 style="margin-top:4px">{{ product.name }}</h1>
+    {% if product.memo %}
+    <p style="font-size:13px;color:#6b7280;margin-top:2px;margin-bottom:2px">{{ product.memo }}</p>
+    {% endif %}
     <p>
       <a href="{{ product.url }}" target="_blank" style="color:#4f46e5;font-size:12px">
         {{ product.url[:60] }}{% if product.url|length > 60 %}...{% endif %}
