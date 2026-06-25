@@ -279,14 +279,25 @@ def dashboard():
     ).fetchall()
 
     # build flat item list
+    from datetime import date, timedelta
+    yesterday = (date.today() - timedelta(days=1)).strftime('%Y-%m-%d')
     flat = []
     for p in products:
-        snaps = conn.execute(
-            "SELECT * FROM snapshots WHERE product_id=? ORDER BY collected_at DESC LIMIT 2",
+        latest = conn.execute(
+            "SELECT * FROM snapshots WHERE product_id=? ORDER BY collected_at DESC LIMIT 1",
             (p['id'],)
-        ).fetchall()
-        latest = snaps[0] if snaps else None
-        prev   = snaps[1] if len(snaps) > 1 else None
+        ).fetchone()
+        # 전일 대비: 어제 날짜 스냅샷 우선, 없으면 직전 수집본
+        prev = conn.execute(
+            "SELECT * FROM snapshots WHERE product_id=? AND collected_at=?",
+            (p['id'], yesterday)
+        ).fetchone()
+        if prev is None:
+            prev_row = conn.execute(
+                "SELECT * FROM snapshots WHERE product_id=? AND collected_at < ? ORDER BY collected_at DESC LIMIT 1",
+                (p['id'], latest['collected_at'] if latest else yesterday)
+            ).fetchone()
+            prev = prev_row
         review_diff = None
         if latest and prev:
             if latest['review_count'] is not None and prev['review_count'] is not None:
