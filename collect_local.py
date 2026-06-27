@@ -264,6 +264,23 @@ def scrape_smartstore_keywords(page):
         page.goto('https://sell.smartstore.naver.com/', wait_until='domcontentloaded', timeout=20000)
         page.wait_for_timeout(3000)
 
+        # 로그인 여부 확인 — 로그인 안 됐으면 최대 3분 대기
+        if 'sell.smartstore.naver.com' not in page.url or page.query_selector('input[type="password"]') is not None:
+            print('  [키워드] 스마트스토어 로그인 필요 — 브라우저 창에서 로그인해주세요 (최대 3분)')
+            for _ in range(90):
+                page.wait_for_timeout(2000)
+                url = page.url
+                if 'sell.smartstore.naver.com' in url and 'login' not in url and 'nidlogin' not in url:
+                    # 판매자센터 본 화면 진입 확인
+                    if page.query_selector('[class*="gnb"], [class*="GNB"], nav') is not None:
+                        print('  [키워드] 로그인 완료!')
+                        break
+            else:
+                print('  [키워드] 로그인 시간 초과. 키워드 수집 건너뜀.')
+                return results
+
+        page.wait_for_timeout(2000)
+
         # 데이터분석 > 마케팅분석 페이지로 직접 이동
         page.goto(
             'https://sell.smartstore.naver.com/#/naverpay/analytics/marketing',
@@ -446,11 +463,13 @@ def main():
     except Exception as e:
         print(f'전송 실패: {e}')
 
-    # 키워드 수집 (스마트스토어 마케팅분석)
+    # 키워드 수집 (스마트스토어 마케팅분석) — 판매자 계정 별도 세션 사용
     print('\n[키워드 수집 시작]')
+    STORE_SESSION_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'smartstore_session')
+    os.makedirs(STORE_SESSION_DIR, exist_ok=True)
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
-            user_data_dir=SESSION_DIR,
+            user_data_dir=STORE_SESSION_DIR,
             headless=False,
             no_viewport=True,
             args=['--disable-blink-features=AutomationControlled'],
