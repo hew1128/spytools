@@ -570,55 +570,5 @@ def api_push():
     return jsonify({'ok': True, 'saved': count})
 
 
-@app.route('/keywords')
-def keywords_page():
-    conn = get_db()
-    date_filter = request.args.get('date', '')
-    if date_filter:
-        rows = conn.execute(
-            "SELECT * FROM keyword_stats WHERE collected_date=? ORDER BY purchases DESC, visits DESC",
-            (date_filter,)
-        ).fetchall()
-    else:
-        latest_date = conn.execute(
-            "SELECT MAX(collected_date) as d FROM keyword_stats"
-        ).fetchone()
-        date_filter = latest_date['d'] if latest_date and latest_date['d'] else ''
-        rows = conn.execute(
-            "SELECT * FROM keyword_stats WHERE collected_date=? ORDER BY purchases DESC, visits DESC",
-            (date_filter,)
-        ).fetchall() if date_filter else []
-    all_dates = conn.execute(
-        "SELECT DISTINCT collected_date FROM keyword_stats ORDER BY collected_date DESC LIMIT 30"
-    ).fetchall()
-    conn.close()
-    return render_template('keywords.html', rows=rows, date_filter=date_filter,
-                           all_dates=[r['collected_date'] for r in all_dates])
-
-
-@app.route('/api/push_keywords', methods=['POST'])
-def api_push_keywords():
-    data = request.get_json()
-    if not data or not isinstance(data, list):
-        return jsonify({'ok': False, 'error': 'invalid data'}), 400
-    conn = get_db()
-    today = today_kst()
-    conn.execute("DELETE FROM keyword_stats WHERE collected_date=?", (today,))
-    count = 0
-    for item in data:
-        keyword = item.get('keyword', '').strip()
-        if not keyword:
-            continue
-        conn.execute(
-            "INSERT INTO keyword_stats (keyword,visits,purchases,conversion_rate,revenue,collected_date) VALUES (?,?,?,?,?,?)",
-            (keyword, item.get('visits'), item.get('purchases'),
-             item.get('conversion_rate'), item.get('revenue'), today)
-        )
-        count += 1
-    conn.commit()
-    conn.close()
-    return jsonify({'ok': True, 'saved': count})
-
-
 if __name__ == '__main__':
     app.run(debug=True)
