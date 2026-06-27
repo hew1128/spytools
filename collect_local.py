@@ -8,12 +8,13 @@
 import re
 import json
 import time
+import random
 import os
 import urllib.parse
 from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+from patchright.sync_api import sync_playwright
 
 # ── 설정 ──────────────────────────────────────────────────────────
 SERVER_URL = 'https://web-production-54ce2d.up.railway.app'
@@ -68,69 +69,121 @@ def parse_korean_number(text):
 
 
 def search_naver_shopping(product_name, store_hint, page):
-    """네이버 쇼핑 검색 후 일반(비광고) 카드에서 구매수/찜수/등록일/유기순위 수집"""
-    result = {'purchase_count': None, 'wishlist_count': None,
-              'registered_date': None, 'organic_rank': None}
+    """네이버 쇼핑 검색 후 일반(비광고) 카드에서 리뷰수/별점/가격/구매수/찜수/등록일/유기순위 수집"""
+    result = {'review_count': None, 'rating': None, 'price': None,
+              'purchase_count': None, 'wishlist_count': None,
+              'registered_date': None, 'organic_rank': None, 'error': None}
     if not store_hint or not store_hint.strip():
         return result
     try:
-        query = urllib.parse.quote(product_name)
-        page.goto(
-            f'https://search.shopping.naver.com/search/all?query={query}',
-            wait_until='domcontentloaded', timeout=30000
-        )
-        page.wait_for_timeout(2000)
+        # 네이버 메인 → 검색창 타이핑 → 쇼핑 탭 (직접 URL은 봇 감지로 캡챠 발생)
+        page.goto('https://www.naver.com', wait_until='domcontentloaded', timeout=15000)
+        page.wait_for_timeout(random.randint(400, 800))
+        page.fill('input#query', product_name)
+        page.wait_for_timeout(random.randint(200, 500))
+        page.keyboard.press('Enter')
+        page.wait_for_load_state('domcontentloaded', timeout=15000)
+        page.wait_for_timeout(1200)
+
+        # 쇼핑 탭 클릭 (여러 셀렉터 시도)
+        shopped = False
+        for sel in ['a[data-clk="sho"]', '#lnb a[href*="shopping"]', '#snb a[href*="shopping"]']:
+            el = page.query_selector(sel)
+            if el:
+                el.click()
+                page.wait_for_load_state('domcontentloaded', timeout=15000)
+                shopped = True
+                break
+        if not shopped:
+            # 쇼핑 탭을 못 찾으면 직접 URL 폴백
+            query = urllib.parse.quote(product_name)
+            page.goto(
+                f'https://search.shopping.naver.com/search/all?query={query}&frm=NVSHATC',
+                wait_until='load', timeout=30000
+            )
+
+        # 상품 카드 렌더링 대기
+        try:
+            page.wait_for_selector('[class*="product_"]', timeout=8000)
+        except Exception:
+            pass
+        page.wait_for_timeout(1500)
 
         hint = store_hint.strip().lower()
         data = page.evaluate(f'''() => {{
             const hint = {json.dumps(hint)};
-            // 광고 제외 — 일반 카드만 (product_item__K0ayS)
-            const cards = document.querySelectorAll('div.product_item__K0ayS');
+            const allCards = Array.from(document.querySelectorAll('li[class*="product_"], div[class*="product_item"]'));
+            const cards = allCards.filter(el =>
+                !el.closest('[data-shp-ad-img]') && !el.closest('[class*="adProduct"]')
+            );
+
+            let matchedCard = null;
             for (const card of cards) {{
-                const cardText = card.innerText.toLowerCase();
-                if (!cardText.includes(hint)) continue;
-
-                // 구매수
-                let purchase = null;
-                const purchaseEl = card.querySelector('[data-shp-area*="purchasecount"] .product_num__WuH26, [data-shp-area*="purchasecount"] em');
-                if (purchaseEl) purchase = purchaseEl.innerText.trim();
-
-                // 찜수 / 등록일: span.product_etc__Z7jnS 중 텍스트로 구분
-                let wish = null, regDate = null;
-                const etcSpans = card.querySelectorAll('[class*="product_etc__"]');
-                for (const sp of etcSpans) {{
-                    const t = sp.innerText.trim();
-                    if (t.startsWith('찜')) {{
-                        const numEl = sp.querySelector('[class*="product_num__"]');
-                        if (numEl) wish = numEl.innerText.trim();
-                    }} else if (t.startsWith('등록일')) {{
-                        const m = t.match(/(\d{{4}}\.\d{{1,2}}\.?)/);
-                        if (m) regDate = m[1].replace(/\.$/, '');
-                    }}
+                if (card.innerText.toLowerCase().includes(hint)) {{
+                    matchedCard = card;
+                    break;
                 }}
-
-                // 유기 순위: data-shp-contents-dt 속성에서 organic_expose_order
-                let organicRank = null;
-                const rankEl = card.querySelector('[data-shp-contents-dt]');
-                if (rankEl) {{
-                    try {{
-                        const dt = JSON.parse(rankEl.getAttribute('data-shp-contents-dt') || '[]');
-                        const oe = dt.find(x => x.key === 'organic_expose_order');
-                        if (oe) organicRank = parseInt(oe.value);
-                    }} catch(e) {{}}
-                }}
-
-                return {{ purchase, wish, regDate, organicRank }};
             }}
-            return null;
+
+            if (!matchedCard) return {{ debug: 'no_match', cardCount: cards.length }};
+
+            // 카드 전체 텍스트로 패턴 파싱 (★4.48 (1,358) · 구매 547 · 찜 377 · 등록일 2023.11.)
+            const text = matchedCard.innerText;
+
+            // 별점 + 리뷰수: ★4.48 (1,358)
+            let rating = null, reviewCount = null;
+            const starM = text.match(/★\s*([\d.]+)\s*\(([\d,]+)\)/);
+            if (starM) {{ rating = starM[1]; reviewCount = starM[2].replace(/,/g, ''); }}
+
+            // 구매수: 구매 547 또는 구매 1.5만
+            let purchase = null;
+            const purchM = text.match(/구매\s*([\d,.]+만?천?)/);
+            if (purchM) purchase = purchM[1];
+
+            // 찜수: 찜 377
+            let wish = null;
+            const wishM = text.match(/찜\s*([\d,.]+만?천?)/);
+            if (wishM) wish = wishM[1];
+
+            // 등록일: 등록일 2023.11.
+            let regDate = null;
+            const regM = text.match(/등록일\s*(\d{{4}}\.\d{{1,2}}\.?)/);
+            if (regM) regDate = regM[1].replace(/\.$/, '');
+
+            // 가격: price 관련 strong 태그
+            let price = null;
+            const priceEl = matchedCard.querySelector('[class*="price"] strong, strong[class*="Price"], [class*="price_"] strong');
+            if (priceEl) {{
+                const m = priceEl.innerText.replace(/,/g,'').match(/(\d{{3,7}})/);
+                if (m) price = m[1];
+            }}
+
+            // 유기순위: data-shp-contents-dt → organic_expose_order
+            let organicRank = null;
+            const rankEl = matchedCard.querySelector('[data-shp-contents-dt]');
+            if (rankEl) {{
+                try {{
+                    const dt = JSON.parse(rankEl.getAttribute('data-shp-contents-dt') || '[]');
+                    const oe = dt.find(x => x.key === 'organic_expose_order');
+                    if (oe) organicRank = parseInt(oe.value);
+                }} catch(e) {{}}
+            }}
+
+            return {{ rating, reviewCount, purchase, wish, regDate, price, organicRank, debug: 'ok' }};
         }}''')
 
         if data:
-            result['purchase_count'] = parse_korean_number(data.get('purchase'))
-            result['wishlist_count']  = parse_korean_number(data.get('wish'))
-            result['registered_date'] = data.get('regDate')
-            if data.get('organicRank') is not None:
-                result['organic_rank'] = data['organicRank']
+            if data.get('debug') == 'no_match':
+                print(f'    쇼핑: 카드 {data.get("cardCount", 0)}개 중 힌트 미매칭')
+            else:
+                result['review_count']    = parse_korean_number(data.get('reviewCount'))
+                result['rating']          = float(data['rating']) if data.get('rating') else None
+                result['price']           = int(data['price']) if data.get('price') else None
+                result['purchase_count']  = parse_korean_number(data.get('purchase'))
+                result['wishlist_count']  = parse_korean_number(data.get('wish'))
+                result['registered_date'] = data.get('regDate')
+                if data.get('organicRank') is not None:
+                    result['organic_rank'] = data['organicRank']
     except Exception as e:
         print(f'    쇼핑 검색 오류: {str(e)[:80]}')
     return result
@@ -203,6 +256,88 @@ def scrape_coupang(url, page):
         return {'review_count': None, 'rating': None, 'price': None, 'error': str(e)[:200]}
 
 
+def scrape_smartstore_keywords(page):
+    """스마트스토어 마케팅분석 → 검색채널 키워드 수집"""
+    results = []
+    try:
+        print('  [키워드] 스마트스토어 판매자센터 이동 중...')
+        page.goto('https://sell.smartstore.naver.com/', wait_until='domcontentloaded', timeout=20000)
+        page.wait_for_timeout(3000)
+
+        # 데이터분석 > 마케팅분석 페이지로 직접 이동
+        page.goto(
+            'https://sell.smartstore.naver.com/#/naverpay/analytics/marketing',
+            wait_until='domcontentloaded', timeout=20000
+        )
+        page.wait_for_timeout(4000)
+
+        # 검색채널 탭 클릭 시도
+        for selector in ['text=검색채널', '[class*="tab"] >> text=검색채널', 'a:has-text("검색채널")']:
+            try:
+                el = page.query_selector(selector)
+                if el:
+                    el.click()
+                    page.wait_for_timeout(2500)
+                    print('  [키워드] 검색채널 탭 클릭 완료')
+                    break
+            except Exception:
+                pass
+
+        # 테이블 로딩 대기
+        try:
+            page.wait_for_selector('table tbody tr', timeout=10000)
+        except Exception:
+            print('  [키워드] 테이블 로딩 대기 시간 초과')
+
+        page.wait_for_timeout(2000)
+
+        # 테이블 데이터 추출
+        raw = page.evaluate('''() => {
+            const rows = Array.from(document.querySelectorAll('table tbody tr'));
+            return rows.map(row => {
+                const cells = Array.from(row.querySelectorAll('td'));
+                return cells.map(c => c.innerText.trim());
+            }).filter(r => r.length >= 2 && r[0] && r[0] !== '데이터가 없습니다');
+        }''')
+
+        def to_int(s):
+            if not s:
+                return None
+            s = str(s).replace(',', '').replace(' ', '').strip()
+            try:
+                return int(float(s))
+            except Exception:
+                return None
+
+        def to_float(s):
+            if not s:
+                return None
+            s = str(s).replace('%', '').replace(',', '.').strip()
+            try:
+                return float(s)
+            except Exception:
+                return None
+
+        for row in raw:
+            keyword = row[0].strip()
+            if not keyword or keyword in ('검색어', '합계', '전체'):
+                continue
+            results.append({
+                'keyword': keyword,
+                'visits': to_int(row[1]) if len(row) > 1 else None,
+                'purchases': to_int(row[2]) if len(row) > 2 else None,
+                'conversion_rate': to_float(row[3]) if len(row) > 3 else None,
+                'revenue': to_int(row[4]) if len(row) > 4 else None,
+            })
+
+        print(f'  [키워드] {len(results)}개 키워드 수집 완료')
+
+    except Exception as e:
+        print(f'  [키워드] 수집 오류: {str(e)[:100]}')
+
+    return results
+
+
 def main():
     print('[염탐기 로컬 수집기]')
     print(f'서버: {SERVER_URL}\n')
@@ -263,12 +398,21 @@ def main():
 
             if platform == 'naver':
                 r = scrape_naver(url, page)
-                # 네이버 쇼핑 검색으로 구매수/찜수/등록일/유기순위 추가 수집
+                # 네이버 쇼핑 검색으로 구매수/찜수/등록일/유기순위 수집 (메모=스토어명으로 카드 매칭)
                 memo = prod.get('memo', '') or ''
                 if memo.strip():
                     print(f'    쇼핑 검색 중 (힌트: {memo[:20]})...')
                     shopping = search_naver_shopping(prod['name'], memo, page)
-                    r.update({k: v for k, v in shopping.items() if v is not None})
+                    for k, v in shopping.items():
+                        if v is None or k == 'error':
+                            continue
+                        if k in ('review_count', 'rating', 'price'):
+                            # URL에서 이미 가져온 경우 유지, 실패한 경우만 보완
+                            if r.get(k) is None:
+                                r[k] = v
+                        else:
+                            # 쇼핑 전용 필드(구매수/찜수/등록일/유기순위)는 쇼핑 값 우선
+                            r[k] = v
             elif platform == 'coupang':
                 r = scrape_coupang(url, page)
             else:
@@ -301,6 +445,34 @@ def main():
         print(f'완료: {data.get("saved", 0)}개 저장')
     except Exception as e:
         print(f'전송 실패: {e}')
+
+    # 키워드 수집 (스마트스토어 마케팅분석)
+    print('\n[키워드 수집 시작]')
+    with sync_playwright() as p:
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=SESSION_DIR,
+            headless=False,
+            no_viewport=True,
+            args=['--disable-blink-features=AutomationControlled'],
+        )
+        kw_page = context.new_page()
+        keywords = scrape_smartstore_keywords(kw_page)
+        context.close()
+
+    if keywords:
+        try:
+            resp = requests.post(
+                f'{SERVER_URL}/api/push_keywords',
+                json=keywords,
+                headers={'Content-Type': 'application/json'},
+                timeout=15
+            )
+            data = resp.json()
+            print(f'키워드 전송 완료: {data.get("saved", 0)}개 저장')
+        except Exception as e:
+            print(f'키워드 전송 실패: {e}')
+    else:
+        print('  키워드 데이터 없음 (스마트스토어 로그인 필요하거나 데이터 없음)')
 
     print(f'\n수집 완료! 브라우저에서 확인: {SERVER_URL}')
 
